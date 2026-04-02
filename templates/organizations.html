@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý tổ chức - Hội Nông Dân Việt Nam{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Quản lý tổ chức</h2>
+            {% if session.get('role') == 'admin' %}
+            <div>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addOrganizationModal">
+                    <i class="fas fa-plus"></i> Thêm tổ chức
+                </button>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="GET" class="hamlet-toolbar mb-4">
+                    <div class="hamlet-toolbar-title">Quản lý tổ chức</div>
+                    <input type="text" name="q" class="form-control hamlet-toolbar-search" placeholder="Nhập từ khóa tìm kiếm" value="{{ search_term }}">
+                    <input type="hidden" name="xa_id" value="{{ selected_xa_id }}">
+                    <button type="submit" class="btn hamlet-search-btn">
+                        <i class="fas fa-search"></i> Tra cứu
+                    </button>
+                </form>
+
+                <div class="hamlet-table-container">
+                    <div class="table-responsive">
+                        <table class="table table-hover hamlet-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>STT</th>
+                                    <th>Tên tổ chức</th>
+                                    <th>Cấp</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in chi_hoi_rows %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td><strong>{{ row.name }}</strong></td>
+                                    <td>{{ row.level_label }}</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a href="{{ url_for('members_list', organization_id=row.id) }}" class="btn btn-sm btn-outline-success" title="Xem hội viên">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" data-org-id="{{ row.id }}" onclick="editOrganization({{ row.id }})" title="Sửa">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" data-org-id="{{ row.id }}" data-org-name="{{ row.name }}" onclick="confirmDelete(this)" title="Xóa">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% if not chi_hoi_rows %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">Không có dữ liệu tổ chức phù hợp</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal Sửa tổ chức -->
+<div class="modal fade" id="editOrganizationModal" tabindex="-1" aria-labelledby="editOrganizationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editOrganizationModalLabel">Sửa tổ chức</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editOrgForm">
+                <div class="modal-body">
+                    <input type="hidden" id="editOrgId" name="id">
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="editOrgName" class="form-label">Tên tổ chức <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="editOrgName" name="name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="editOrgType" class="form-label">Loại tổ chức</label>
+                            <input type="text" class="form-control" id="editOrgType" disabled>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="editHamletName" class="form-label">Ấp</label>
+                            <input type="text" class="form-control" id="editHamletName" readonly>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="editLeaderName" class="form-label">Tên chi hội trưởng</label>
+                            <input type="text" class="form-control" id="editLeaderName" name="leader_name">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="editPhone" class="form-label">Điện thoại</label>
+                            <input type="tel" class="form-control" id="editPhone" name="phone">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="editEmail" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="editEmail" name="email">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="editAddress" class="form-label">Địa chỉ</label>
+                        <textarea class="form-control" id="editAddress" name="address" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Lưu thay đổi
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addOrganizationModal" data-open-on-load="{{ 1 if open_add_org else 0 }}" tabindex="-1" aria-labelledby="addOrganizationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addOrganizationModalLabel">Thêm tổ chức mới</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_organization') }}">
+                <div class="modal-body">
+                    <!-- Hidden input để set parent mặc định -->
+                    <input type="hidden" name="parent_id" value="">
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name" class="form-label">Tên tổ chức <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" placeholder="Nhập tối đa 120 ký tự" maxlength="120" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="org_type" class="form-label">Cấp tổ chức <span class="text-danger">*</span></label>
+                            <select class="form-select" id="org_type" name="org_type" required>
+                                <option value="">Chọn cấp tổ chức</option>
+                                <option value="chi_hoi">Chi Hội</option>
+                                <option value="to_hoi">Tổ Hội</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Lưu tổ chức
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modalElement = document.getElementById('addOrganizationModal');
+    const parentSelectElement = document.getElementById('parent_id');
+
+    function normalizeText(value) {
+        return (value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+    }
+
+    function applyDefaultParentOrganization() {
+        if (!parentSelectElement || parentSelectElement.value) {
+            return;
+        }
+
+        const options = Array.from(parentSelectElement.options || []);
+        const target = options.find(function (option) {
+            const text = normalizeText(option.textContent);
+            return text.includes('hoi nong dan xa hung my') || text.includes('hung my');
+        });
+
+        if (target) {
+            parentSelectElement.value = target.value;
+        }
+    }
+
+    if (modalElement && modalElement.getAttribute('data-open-on-load') === '1') {
+        applyDefaultParentOrganization();
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    }
+
+    if (modalElement) {
+        modalElement.addEventListener('show.bs.modal', applyDefaultParentOrganization);
+        // Reset form when modal is hidden
+        modalElement.addEventListener('hidden.bs.modal', function() {
+            const form = modalElement.querySelector('form');
+            if (form) {
+                form.reset();
+            }
+        });
+    }
+
+    const treeSearchInput = document.getElementById('hamletTreeSearch');
+    const treeContainer = document.getElementById('hamletTreeList');
+    if (treeSearchInput && treeContainer) {
+        treeSearchInput.addEventListener('input', function () {
+            const keyword = this.value.trim().toLowerCase();
+            const xaBlocks = treeContainer.querySelectorAll('.hamlet-tree-xa');
+
+            xaBlocks.forEach(function (block) {
+                const xaText = (block.querySelector('.hamlet-tree-xa-link')?.textContent || '').toLowerCase();
+                const childItems = block.querySelectorAll('.hamlet-tree-child');
+                let anyChildVisible = false;
+
+                childItems.forEach(function (child) {
+                    const childText = child.textContent.toLowerCase();
+                    const childMatched = !keyword || childText.includes(keyword);
+                    child.style.display = childMatched ? 'flex' : 'none';
+                    if (childMatched) {
+                        anyChildVisible = true;
+                    }
+                });
+
+                const xaMatched = !keyword || xaText.includes(keyword);
+                block.style.display = (xaMatched || anyChildVisible) ? 'block' : 'none';
+            });
+        });
+    }
+});
+
+function confirmDelete(button) {
+    const orgId = button.getAttribute('data-org-id');
+    const orgName = button.getAttribute('data-org-name');
+    
+    if (confirm('Bạn có chắc muốn xóa tổ chức "' + orgName + '"?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/organizations/' + orgId + '/delete';
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function editOrganization(orgId) {
+    // Fetch organization data from API
+    fetch(`/api/organizations/${orgId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Lỗi: ' + data.error);
+                return;
+            }
+            
+            // Populate form
+            document.getElementById('editOrgId').value = data.id;
+            document.getElementById('editOrgName').value = data.name;
+            document.getElementById('editOrgType').value = 
+                (data.org_type === 'xa' ? 'Hội nông dân xã' : 
+                 data.org_type === 'chi_hoi' ? 'Chi hội' : 
+                 data.org_type === 'to_hoi' ? 'Tổ hội' : data.org_type);
+            document.getElementById('editHamletName').value = data.hamlet_name || '';
+            document.getElementById('editLeaderName').value = data.leader_name;
+            document.getElementById('editPhone').value = data.phone;
+            document.getElementById('editEmail').value = data.email;
+            document.getElementById('editAddress').value = data.address;
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('editOrganizationModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Lỗi tải dữ liệu tổ chức');
+        });
+}
+
+// Handle edit form submit
+document.getElementById('editOrgForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const orgId = document.getElementById('editOrgId').value;
+    const formData = new FormData(this);
+    
+    fetch(`/organizations/${orgId}`, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            alert(data.message || 'Cập nhật thành công');
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editOrganizationModal'));
+            if (modal) {
+                modal.hide();
+            }
+            // Reload page
+            location.reload();
+        } else {
+            alert('Lỗi: ' + (data.message || 'Không thể cập nhật'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Lỗi cập nhật tổ chức');
+    });
+});
+</script>
+{% endblock %}

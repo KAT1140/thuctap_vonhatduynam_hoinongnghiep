@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Nhập Hội Viên - Hội Nông Dân Việt Nam{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2>Nhập Hội Viên từ File Excel</h2>
+        <p class="text-muted">Tải lên file Excel để nhập danh sách hội viên hàng loạt</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Tải lên file Excel</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Chọn file Excel:</label>
+                        <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
+                        <small class="form-text text-muted">
+                            Chỉ chấp nhận file có định dạng .xlsx hoặc .xls. Tối đa 16MB.
+                        </small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload"></i> Nhập dữ liệu
+                    </button>
+                    <a href="{{ url_for('members_list') }}" class="btn btn-secondary">
+                        Quay lại
+                    </a>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Hướng dẫn</h5>
+            </div>
+            <div class="card-body">
+                <h6>Cột trong file Excel:</h6>
+                <ol class="small">
+                    <li><strong>A: Họ tên</strong> (bắt buộc)</li>
+                    <li><strong>B: Ngày sinh</strong> (định dạng: YYYY-MM-DD)</li>
+                    <li><strong>C: Giới tính</strong> (nam/nữ/khác)</li>
+                    <li><strong>D: Căn cước/CMND</strong> (bắt buộc, không trùng)</li>
+                    <li><strong>E: Điện thoại</strong></li>
+                    <li><strong>F: Email</strong></li>
+                    <li><strong>G: Địa chỉ</strong></li>
+                    <li><strong>H: Trình độ</strong> (thieu_hoc/tieu_hoc/trung_hoc/cao_dang/dai_hoc)</li>
+                    <li><strong>I: Dân tộc</strong></li>
+                    <li><strong>J: Tôn giáo</strong></li>
+                    <li><strong>K: Tên ấp</strong></li>
+                    <li><strong>L: Phân loại</strong> (thuong/dang_vien/nong_cot)</li>
+                    <li><strong>M: ID Tổ hội</strong> (bắt buộc)</li>
+                </ol>
+                
+                <hr>
+                <h6>Lưu ý:</h6>
+                <ul class="small">
+                    <li>Dòng đầu tiên phải là tiêu đề cột</li>
+                    <li>Họ tên và ID Tổ hội không được để trống</li>
+                    <li>ID Tổ hội phải tồn tại trong hệ thống</li>
+                    <li>Để to_hoi users chỉ được nhập vào próprio tổ của mình</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

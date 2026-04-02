@@ -1,0 +1,586 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý hội viên - Hội Nông Dân Việt Nam{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="mb-0" style="color: #162436; font-weight: 700;">
+                    <i class="fas fa-users" style="color: #28a745; margin-right: 0.5rem;"></i>
+                    Quản lý hội viên
+                </h2>
+                <p class="text-muted mb-0" style="font-size: 14px; margin-top: 0.25rem;">
+                    Tổng cộng: <strong>{{ pagination.total_items }}</strong> hội viên
+                </p>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMemberModal">
+                    <i class="fas fa-plus"></i> Thêm hội viên
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="GET" class="mb-4">
+                    <!-- Hàng 1: 6 cột lọc -->
+                    <div class="row g-2 mb-3" style="display: flex; flex-wrap: wrap; background-color: #f8f9fa; padding: 1.25rem; border-radius: 0.5rem;">
+                        <div style="flex: 0 0 18%; min-width: 130px;">
+                            <label for="keyword" class="form-label small mb-1">Từ khóa</label>
+                            <input type="text" class="form-control form-control-sm" id="keyword" name="q" value="{{ request.args.get('q', '') }}" placeholder="Nhập từ khóa tìm kiếm">
+                        </div>
+                        <div style="flex: 0 0 18%; min-width: 130px;">
+                            <label for="organization_id" class="form-label small mb-1">Hội ấp</label>
+                            <select class="form-select form-select-sm" id="organization_id" name="organization_id">
+                                <option value="">Chọn hội ấp</option>
+                                {% for org in member_orgs %}
+                                <option value="{{ org.id }}" {% if request.args.get('organization_id')|int == org.id %}selected{% endif %}>{{ org.display_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div style="flex: 0 0 18%; min-width: 130px;">
+                            <label for="member_type" class="form-label small mb-1">Phân loại</label>
+                            <select class="form-select form-select-sm" id="member_type" name="member_type">
+                                <option value="">Chọn phân loại</option>
+                                <option value="thuong" {% if request.args.get('member_type') == 'thuong' %}selected{% endif %}>Hội viên thường</option>
+                                <option value="dang_vien" {% if request.args.get('member_type') == 'dang_vien' %}selected{% endif %}>Đảng viên</option>
+                                <option value="nong_cot" {% if request.args.get('member_type') == 'nong_cot' %}selected{% endif %}>Nòng cốt</option>
+                            </select>
+                        </div>
+                        <div style="flex: 0 0 18%; min-width: 130px;">
+                            <label for="education" class="form-label small mb-1">Trình độ</label>
+                            <select class="form-select form-select-sm" id="education" name="education_level">
+                                <option value="">Chọn trình độ</option>
+                                <option value="THCS" {% if request.args.get('education_level') == 'THCS' %}selected{% endif %}>THCS</option>
+                                <option value="THPT" {% if request.args.get('education_level') == 'THPT' %}selected{% endif %}>THPT</option>
+                                <option value="Cao đẳng" {% if request.args.get('education_level') == 'Cao đẳng' %}selected{% endif %}>Cao đẳng</option>
+                                <option value="Đại học" {% if request.args.get('education_level') == 'Đại học' %}selected{% endif %}>Đại học</option>
+                            </select>
+                        </div>
+                        <div style="flex: 0 0 18%; min-width: 130px;">
+                            <label for="status" class="form-label small mb-1">Trạng thái</label>
+                            <select class="form-select form-select-sm" id="status" name="status">
+                                <option value="">Tất cả</option>
+                                <option value="active" {% if request.args.get('status') == 'active' %}selected{% endif %}>Hoạt động</option>
+                                <option value="inactive" {% if request.args.get('status') == 'inactive' %}selected{% endif %}>Không hoạt động</option>
+                                <option value="suspended" {% if request.args.get('status') == 'suspended' %}selected{% endif %}>Bị khóa</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Hàng 2: Nút tra cứu -->
+                    <div class="row g-2">
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-success btn-sm">
+                                <i class="fas fa-search"></i> Tra cứu
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <a href="{{ url_for('members_list') }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-redo"></i> Xóa lọc
+                            </a>
+                        </div>
+                    </div>
+                </form>
+
+                {% if members %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Họ tên</th>
+                                <th>Ngày sinh</th>
+                                <th>Giới tính</th>
+                                <th>Số CMND/CCCD</th>
+                                <th>Điện thoại</th>
+                                <th>Email</th>
+                                <th>Dân tộc</th>
+                                <th>Tôn giáo</th>
+                                <th>Phân loại</th>
+                                <th>Xã / Chi hội / Tổ hội</th>
+                                <th>Ấp</th>
+                                <th>Trạng thái</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for member in members %}
+                            <tr>
+                                <td><strong>{{ member.full_name }}</strong></td>
+                                <td>{{ member.date_of_birth or '-' }}</td>
+                                <td>
+                                    {% if member.gender == 'nam' %}Nam
+                                    {% elif member.gender == 'nu' %}Nữ
+                                    {% else %}Khác{% endif %}
+                                </td>
+                                <td>{{ member.id_number or '-' }}</td>
+                                <td>{{ member.phone or '-' }}</td>
+                                <td>{{ member.email or '-' }}</td>
+                                <td>{{ member.ethnicity or '-' }}</td>
+                                <td>{{ member.religion or '-' }}</td>
+                                <td>
+                                    {% if member.member_type == 'dang_vien' %}
+                                        <span class="badge bg-primary">Đảng viên</span>
+                                    {% elif member.member_type == 'nong_cot' %}
+                                        <span class="badge bg-info">Nòng cốt</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Thường</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ member.xa_name or '-' }} / {{ member.chi_hoi_name or '-' }} / {{ member.to_hoi_name or '-' }}
+                                </td>
+                                <td>{{ member.hamlet_display or '-' }}</td>
+                                <td>
+                                    {% if member.status == 'active' %}
+                                        <span class="badge bg-success">Hoạt động</span>
+                                    {% elif member.status == 'inactive' %}
+                                        <span class="badge bg-secondary">Không hoạt động</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Bị khóa</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editMemberModal" onclick="editMember({{ member.id }})" title="Sửa">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-member-id="{{ member.id }}" data-member-name="{{ member.full_name }}" onclick="confirmDeleteMember(this)" title="Xóa">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                {% if pagination.total_pages > 1 %}
+                <nav aria-label="Page navigation" class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if pagination.page > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=1) }}">
+                                <i class="fas fa-chevron-left"></i> Đầu tiên
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=pagination.page-1) }}">
+                                Trước
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for p in range(max(1, pagination.page-2), min(pagination.total_pages+1, pagination.page+3)) %}
+                            {% if p == pagination.page %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ p }}</span>
+                            </li>
+                            {% else %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=p) }}">
+                                    {{ p }}
+                                </a>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if pagination.page < pagination.total_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=pagination.page+1) }}">
+                                Sau
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=pagination.total_pages) }}">
+                                Cuối cùng <i class="fas fa-chevron-right"></i>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                <p class="text-center text-muted small">
+                    Trang {{ pagination.page }}/{{ pagination.total_pages }} ({{ pagination.total }} hội viên, {{ pagination.per_page }} mỗi trang)
+                </p>
+                {% endif %}
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> Chưa có hội viên nào
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addMemberModal" data-open-on-load="{{ 1 if open_add_member else 0 }}" tabindex="-1" aria-labelledby="addMemberModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addMemberModalLabel">Thêm hội viên mới</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_member') }}">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="full_name" class="form-label">Họ tên <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="full_name" name="full_name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="date_of_birth" class="form-label">Ngày sinh</label>
+                            <input type="date" class="form-control" id="date_of_birth" name="date_of_birth">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="gender" class="form-label">Giới tính</label>
+                            <select class="form-select" id="gender" name="gender">
+                                <option value="khac">Khác</option>
+                                <option value="nam">Nam</option>
+                                <option value="nu">Nữ</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="id_number" class="form-label">Số CMND/CCCD</label>
+                            <input type="text" class="form-control" id="id_number" name="id_number">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="phone" class="form-label">Điện thoại</label>
+                            <input type="tel" class="form-control" id="phone" name="phone">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Địa chỉ</label>
+                        <textarea class="form-control" id="address" name="address" rows="2"></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="education_level" class="form-label">Trình độ học vấn</label>
+                            <input type="text" class="form-control" id="education_level" name="education_level">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="ethnicity" class="form-label">Dân tộc</label>
+                            <input type="text" class="form-control" id="ethnicity" name="ethnicity" placeholder="Ví dụ: Kinh">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="religion" class="form-label">Tôn giáo</label>
+                            <input type="text" class="form-control" id="religion" name="religion" placeholder="Ví dụ: Không">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="member_type" class="form-label">Phân loại</label>
+                            <select class="form-select" id="member_type" name="member_type">
+                                <option value="thuong">Hội viên thường</option>
+                                <option value="dang_vien">Đảng viên</option>
+                                <option value="nong_cot">Nòng cốt</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="hamlet_name" class="form-label">Ấp</label>
+                            <input type="text" class="form-control" id="hamlet_name" name="hamlet_name" placeholder="Ví dụ: Ấp 1">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="organization_id" class="form-label">Tổ hội</label>
+                            <select class="form-select" id="organization_id" name="organization_id">
+                                <option value="">Chọn tổ hội</option>
+                                {% for org in member_orgs %}
+                                <option value="{{ org.id }}">{{ org.display_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="join_date" class="form-label">Ngày gia nhập</label>
+                            <input type="date" class="form-control" id="join_date" name="join_date">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="party_join_date" class="form-label">Ngày vào Đảng</label>
+                            <input type="date" class="form-control" id="party_join_date" name="party_join_date">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="specialty" class="form-label">Chuyên môn</label>
+                            <input type="text" class="form-control" id="specialty" name="specialty">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="politics" class="form-label">Chính trị</label>
+                            <input type="text" class="form-control" id="politics" name="politics">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label for="password" class="form-label">Mật khẩu ban đầu</label>
+                            <input type="password" class="form-control" id="password" name="password" placeholder="Để trống = 123456">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Lưu hội viên
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Member Modal -->
+<div class="modal fade" id="editMemberModal" tabindex="-1" aria-labelledby="editMemberModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editMemberModalLabel">Sửa thông tin hộ viên: <span id="editMemberName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editMemberForm" method="POST">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <input type="hidden" id="edit_member_id" name="member_id">
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_full_name" class="form-label">Họ tên <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="edit_full_name" name="full_name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_date_of_birth" class="form-label">Ngày sinh</label>
+                            <input type="date" class="form-control" id="edit_date_of_birth" name="date_of_birth">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_gender" class="form-label">Giới tính</label>
+                            <select class="form-select" id="edit_gender" name="gender">
+                                <option value="khac">Khác</option>
+                                <option value="nam">Nam</option>
+                                <option value="nu">Nữ</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_id_number" class="form-label">Số CMND/CCCD</label>
+                            <input type="text" class="form-control" id="edit_id_number" name="id_number">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="edit_email" name="email">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_phone" class="form-label">Điện thoại</label>
+                            <input type="tel" class="form-control" id="edit_phone" name="phone">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_education_level" class="form-label">Trình độ học vấn</label>
+                            <input type="text" class="form-control" id="edit_education_level" name="education_level">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_join_date" class="form-label">Ngày tham gia hội</label>
+                            <input type="date" class="form-control" id="edit_join_date" name="join_date">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label for="edit_address" class="form-label">Địa chỉ</label>
+                            <textarea class="form-control" id="edit_address" name="address" rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_party_join_date" class="form-label">Ngày vào Đảng</label>
+                            <input type="date" class="form-control" id="edit_party_join_date" name="party_join_date">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_specialty" class="form-label">Chuyên môn</label>
+                            <input type="text" class="form-control" id="edit_specialty" name="specialty">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label for="edit_politics" class="form-label">Chính trị</label>
+                            <input type="text" class="form-control" id="edit_politics" name="politics">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_hamlet_name" class="form-label">Ấp</label>
+                            <input type="text" class="form-control bg-light" id="edit_hamlet_name" name="hamlet_name" readonly>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_member_type" class="form-label">Phân loại</label>
+                            <select class="form-select" id="edit_member_type" name="member_type">
+                                <option value="thuong">Hội viên thường</option>
+                                <option value="dang_vien">Đảng viên</option>
+                                <option value="nong_cot">Nòng cốt</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_status" class="form-label">Trạng thái</label>
+                            <select class="form-select" id="edit_status" name="status">
+                                <option value="active">Hoạt động</option>
+                                <option value="inactive">Không hoạt động</option>
+                                <option value="blocked">Bị khóa</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Lưu thay đổi
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modalElement = document.getElementById('addMemberModal');
+    if (modalElement && modalElement.getAttribute('data-open-on-load') === '1') {
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    }
+});
+
+function editMember(memberId) {
+    // Fetch member data and populate the form
+    fetch(`/api/members/${memberId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load member data');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update modal title with member name
+            document.getElementById('editMemberName').textContent = data.member.full_name;
+            
+            // Populate form fields
+            document.getElementById('edit_member_id').value = data.member.id;
+            document.getElementById('edit_full_name').value = data.member.full_name || '';
+            document.getElementById('edit_date_of_birth').value = data.member.date_of_birth || '';
+            document.getElementById('edit_gender').value = data.member.gender || 'khac';
+            document.getElementById('edit_id_number').value = data.member.id_number || '';
+            document.getElementById('edit_email').value = data.member.email || '';
+            document.getElementById('edit_phone').value = data.member.phone || '';
+            document.getElementById('edit_education_level').value = data.member.education_level || '';
+            document.getElementById('edit_join_date').value = data.member.join_date || '';
+            document.getElementById('edit_address').value = data.member.address || '';
+            document.getElementById('edit_party_join_date').value = data.member.party_join_date || '';
+            document.getElementById('edit_specialty').value = data.member.specialty || '';
+            document.getElementById('edit_politics').value = data.member.politics || '';
+            document.getElementById('edit_hamlet_name').value = data.member.hamlet_name || '';
+            document.getElementById('edit_member_type').value = data.member.member_type || 'thuong';
+            document.getElementById('edit_status').value = data.member.status || 'active';
+        })
+        .catch(error => {
+            alert('Lỗi: ' + error.message);
+            console.error('Error:', error);
+        });
+}
+
+document.getElementById('editMemberForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    
+    const memberId = document.getElementById('edit_member_id').value;
+    const formData = new FormData(this);
+    
+    fetch(`/members/${memberId}/edit`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editMemberModal'));
+            if (modal) {
+                modal.hide();
+            }
+            // Reload page to show updated data
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        } else {
+            return response.text().then(text => {
+                throw new Error('Cập nhật thất bại: ' + text);
+            });
+        }
+    })
+    .catch(error => {
+        alert('Lỗi: ' + error.message);
+        console.error('Error:', error);
+    });
+});
+
+function confirmDeleteMember(button) {
+    const memberId = button.getAttribute('data-member-id');
+    const memberName = button.getAttribute('data-member-name');
+    
+    if (confirm('Bạn có chắc muốn xóa hộ viên "' + memberName + '"?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/members/' + memberId + '/delete';
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// Reset form when modal is hidden
+document.getElementById('addMemberModal').addEventListener('hidden.bs.modal', function() {
+    // Find form inside modal and reset it
+    const form = this.querySelector('form');
+    if (form) {
+        form.reset();
+    }
+});
+
+document.getElementById('editMemberModal').addEventListener('hidden.bs.modal', function() {
+    // Find form inside modal and reset it
+    const form = this.querySelector('form');
+    if (form) {
+        form.reset();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Thống kê số lượng hội viên - Hội Nông Dân Xã Hưng Mỹ{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2>Thống kê số lượng hội viên</h2>
+            <p class="text-muted">Báo cáo thống kê số lượng hội viên theo ấp</p>
+        </div>
+    </div>
+
+    <!-- Tổng quan -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h6 class="card-title">Tổng số hội viên</h6>
+                    <h3>{{ summary.total_members }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h6 class="card-title">Hội viên hoạt động</h6>
+                    <h3>{{ summary.active_members }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-danger">
+                <div class="card-body">
+                    <h6 class="card-title">Hội viên ngừng hoạt động</h6>
+                    <h3>{{ summary.inactive_members }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h6 class="card-title">Đảng viên</h6>
+                    <h3>{{ summary.dang_vien_members }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h6 class="card-title">Nòng cốt</h6>
+                    <h3>{{ summary.nong_cot_members }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Thống kê theo ấp -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Số lượng hội viên theo ấp</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Tên ấp</th>
+                                <th class="text-end">Số lượng</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if by_xa %}
+                                {% for row in by_xa %}
+                                    <tr>
+                                        <td>{{ row.hamlet_name or 'Chưa xác định' }}</td>
+                                        <td class="text-end"><span class="badge bg-primary">{{ row.member_count }}</span></td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="2" class="text-center text-muted">Không có dữ liệu</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

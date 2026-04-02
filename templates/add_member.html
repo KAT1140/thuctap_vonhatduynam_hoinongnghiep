@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Thêm hội viên - Hội Nông Dân Việt Nam{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <h2 class="mb-4">Thêm hội viên mới</h2>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="full_name" class="form-label">Họ tên <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="full_name" name="full_name" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="date_of_birth" class="form-label">Ngày sinh</label>
+                                <input type="date" class="form-control" id="date_of_birth" name="date_of_birth">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="gender" class="form-label">Giới tính</label>
+                                <select class="form-select" id="gender" name="gender">
+                                    <option value="khac">Khác</option>
+                                    <option value="nam">Nam</option>
+                                    <option value="nu">Nữ</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="id_number" class="form-label">Số CMND/CCCD</label>
+                                <input type="text" class="form-control" id="id_number" name="id_number">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="phone" class="form-label">Điện thoại</label>
+                                <input type="tel" class="form-control" id="phone" name="phone">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Địa chỉ</label>
+                        <textarea class="form-control" id="address" name="address" rows="2"></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="education_level" class="form-label">Trình độ học vấn</label>
+                                <input type="text" class="form-control" id="education_level" name="education_level">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="ethnicity" class="form-label">Dân tộc</label>
+                                <input type="text" class="form-control" id="ethnicity" name="ethnicity" placeholder="Ví dụ: Kinh">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="religion" class="form-label">Tôn giáo</label>
+                                <input type="text" class="form-control" id="religion" name="religion" placeholder="Ví dụ: Không">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="member_type" class="form-label">Phân loại</label>
+                                <select class="form-select" id="member_type" name="member_type">
+                                    <option value="thuong">Hội viên thường</option>
+                                    <option value="dang_vien">Đảng viên</option>
+                                    <option value="nong_cot">Nòng cốt</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="hamlet_name" class="form-label">Ấp</label>
+                        <input type="text" class="form-control" id="hamlet_name" name="hamlet_name" placeholder="Ví dụ: Ấp 1">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="organization_id" class="form-label">Tổ hội</label>
+                                <select class="form-select" id="organization_id" name="organization_id">
+                                    <option value="">Chọn tổ hội</option>
+                                    {% for org in organizations %}
+                                    <option value="{{ org.id }}">{{ org.display_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="join_date" class="form-label">Ngày gia nhập</label>
+                                <input type="date" class="form-control" id="join_date" name="join_date">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="party_join_date" class="form-label">Ngày vào Đảng</label>
+                                <input type="date" class="form-control" id="party_join_date" name="party_join_date">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="specialty" class="form-label">Chuyên môn</label>
+                                <input type="text" class="form-control" id="specialty" name="specialty">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="politics" class="form-label">Chính trị</label>
+                        <input type="text" class="form-control" id="politics" name="politics">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Mật khẩu ban đầu</label>
+                        <input type="password" class="form-control" id="password" name="password" placeholder="Để trống = 123456">
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Lưu
+                        </button>
+                        <a href="{{ url_for('members_list') }}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Hủy
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

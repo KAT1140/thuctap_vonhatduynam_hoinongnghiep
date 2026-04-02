@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Nhập Hộp Viên Hàng Loạt - Hội Nông Dân Việt Nam{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2>Nhập Hội Viên Hàng Loạt</h2>
+        <p class="text-muted">Nhập tất cả file Excel từ thư mục "exel hội viên theo từng ấp"</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">⚠️ Xác nhận nhập dữ liệu hàng loạt</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-danger fw-bold">Thao tác này sẽ nhập tất cả các file Excel từ thư mục vào hệ thống.</p>
+                <p>Hệ thống sẽ:</p>
+                <ul>
+                    <li>Quét tất cả file Excel (.xlsx, .xls) trong thư mục "exel hội viên theo từng ấp"</li>
+                    <li>Trích xuất tên ấp từ tên file (ví dụ: "hội ấp bà trầm.xlsx" → ấp "bà trầm")</li>
+                    <li>Tìm tổ hội tương ứng với ấp đó</li>
+                    <li>Nhập dữ liệu từ mỗi file</li>
+                </ul>
+                
+                <form method="POST" class="mt-4">
+                    <button type="submit" class="btn btn-danger btn-lg" onclick="return confirm('Bạn chắc chắn muốn nhập tất cả file Excel?');">
+                        <i class="fas fa-fire"></i> Nhập Tất Cả
+                    </button>
+                    <a href="{{ url_for('members_list') }}" class="btn btn-secondary btn-lg">
+                        Quay Lại
+                    </a>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Thông tin</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Thư mục:</strong></p>
+                <code class="small">exel hội viên theo từng ấp/</code>
+                
+                <hr>
+                <p><strong>Cấu trúc file Excel:</strong></p>
+                <ol class="small">
+                    <li>Họ tên (bắt buộc)</li>
+                    <li>Ngày sinh</li>
+                    <li>Giới tính</li>
+                    <li>Căn cước/CMND</li>
+                    <li>Điện thoại</li>
+                    <li>Email</li>
+                    <li>Địa chỉ</li>
+                    <li>Trình độ</li>
+                    <li>Dân tộc</li>
+                    <li>Tôn giáo</li>
+                    <li>Phân loại</li>
+                    <li>ID Tổ hội (tuỳ chọn)</li>
+                </ol>
+                
+                <hr>
+                <p><strong class="text-info">💡 Lưu ý:</strong></p>
+                <small>Nếu không có ID Tổ hội, hệ thống sẽ tự động tìm tổ hội dựa vào tên ấp.</small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: hoi-nong-nghiep-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DB:-hoi_nong_dan}
+      MYSQL_USER: ${MYSQL_USER:-hoi_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-userpassword}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - app_network
+
+  # Flask Application
+  web:
+    build: .
+    container_name: hoi-nong-nghiep-app
+    environment:
+      FLASK_ENV: ${FLASK_ENV:-production}
+      FLASK_APP: app.py
+      MYSQL_HOST: db
+      MYSQL_USER: ${MYSQL_USER:-hoi_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-userpassword}
+      MYSQL_DB: ${MYSQL_DB:-hoi_nong_dan}
+      SECRET_KEY: ${SECRET_KEY:-super-secret-key-change-this}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_network
+    command: python app.py
+
+volumes:
+  mysql_data:
+
+networks:
+  app_network:
+    driver: bridge
