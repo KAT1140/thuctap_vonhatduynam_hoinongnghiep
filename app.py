@@ -23,6 +23,7 @@ app.config.from_object(config[flask_env])
 # Add Jinja2 globals for pagination
 app.jinja_env.globals.update(max=max, min=min, range=range)
 
+
 # Upload config
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
@@ -421,6 +422,14 @@ def add_member():
             # Hash password nếu có
             password_hash = generate_password_hash(data.get('password', '123456'))
             
+            # Get hamlet_name from organization if organization is selected
+            hamlet_name = None
+            if selected_org_id:
+                cursor.execute("SELECT hamlet_name FROM organizations WHERE id = %s", (selected_org_id,))
+                org = cursor.fetchone()
+                if org:
+                    hamlet_name = org['hamlet_name']
+            
             cursor.execute("""
                 INSERT INTO members (
                     full_name, date_of_birth, gender, id_number, phone, email, address,
@@ -439,7 +448,7 @@ def add_member():
                 data.get('education_level'),
                 data.get('ethnicity'),
                 data.get('religion'),
-                data.get('hamlet_name'),
+                hamlet_name,
                 data.get('member_type') or 'thuong',
                 selected_org_id,
                 data.get('join_date') or None,
@@ -477,6 +486,24 @@ def add_member():
         conn.close()
     
     return render_template('add_member.html', organizations=organizations)
+
+@app.route('/api/organization/<int:org_id>/hamlet')
+@login_required
+def api_get_organization_hamlet(org_id):
+    """API endpoint to get hamlet_name for an organization"""
+    conn = get_db_connection()
+    
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT hamlet_name FROM organizations WHERE id = %s", (org_id,))
+        org = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if org and org['hamlet_name']:
+            return jsonify({'hamlet_name': org['hamlet_name']})
+    
+    return jsonify({'hamlet_name': ''})
 
 @app.route('/api/members/<int:member_id>')
 @login_required
@@ -586,6 +613,14 @@ def edit_member(member_id):
         if request.method == 'POST':
             data = request.form.to_dict()
             
+            # Get hamlet_name from organization
+            hamlet_name = member['hamlet_name']  # Keep existing if no org selected
+            if data.get('organization_id'):
+                cursor.execute("SELECT hamlet_name FROM organizations WHERE id = %s", (data.get('organization_id'),))
+                org = cursor.fetchone()
+                if org:
+                    hamlet_name = org['hamlet_name']
+            
             cursor.execute("""
                 UPDATE members 
                 SET full_name = %s,
@@ -601,7 +636,8 @@ def edit_member(member_id):
                     status = %s,
                     party_join_date = %s,
                     specialty = %s,
-                    politics = %s
+                    politics = %s,
+                    hamlet_name = %s
                 WHERE id = %s
             """, (
                 data.get('full_name'),
@@ -618,6 +654,7 @@ def edit_member(member_id):
                 data.get('party_join_date'),
                 data.get('specialty'),
                 data.get('politics'),
+                hamlet_name,
                 member_id
             ))
             conn.commit()
@@ -1242,7 +1279,7 @@ def import_members():
                     education_level = row[7]
                     ethnicity = row[8]
                     religion = row[9]
-                    hamlet_name = row[10]
+                    # hamlet_name = row[10]  # We'll get this from the organization
                     member_type = row[11] or 'thuong'
                     organization_id = row[12]
                     
@@ -1251,7 +1288,7 @@ def import_members():
                         continue
                     
                     # Check organization exists and is 'to_hoi'
-                    cursor.execute("SELECT id, org_type FROM organizations WHERE id = %s", (organization_id,))
+                    cursor.execute("SELECT id, org_type, hamlet_name FROM organizations WHERE id = %s", (organization_id,))
                     org = cursor.fetchone()
                     if not org:
                         error_messages.append(f"Dòng {row_idx}: Tổ chức không tồn tại")
@@ -1259,6 +1296,9 @@ def import_members():
                     if org['org_type'] != 'to_hoi':
                         error_messages.append(f"Dòng {row_idx}: Chỉ được gán hội viên vào Tổ hội")
                         continue
+                    
+                    # Get hamlet_name from organization
+                    hamlet_name = org['hamlet_name']
                     
                     # to_hoi users can only add to their own organization
                     if session.get('role') == 'to_hoi' and session.get('organization_id'):
@@ -1413,7 +1453,7 @@ def import_members_batch():
                             
                             # Find organization by hamlet_name
                             cursor.execute("""
-                                SELECT id FROM organizations 
+                                SELECT id, hamlet_name FROM organizations 
                                 WHERE org_type = 'to_hoi' AND hamlet_name = %s
                                 LIMIT 1
                             """, (hamlet_name,))
@@ -1424,6 +1464,8 @@ def import_members_batch():
                                 continue
                             
                             organization_id = org_result['id']
+                            # Get hamlet_name from organization to ensure consistency
+                            hamlet_name_from_org = org_result['hamlet_name']
                             
                             # Normalize gender
                             if gender:
@@ -1449,7 +1491,7 @@ def import_members_batch():
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             """, (
                                 full_name, date_of_birth, gender, None, email,
-                                hamlet_name, member_type, organization_id, 
+                                hamlet_name_from_org, member_type, organization_id, 
                                 parsed_join_date or datetime.now().strftime('%Y-%m-%d'), 
                                 password_hash, 'active'
                             ))
