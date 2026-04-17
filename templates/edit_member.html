@@ -57,13 +57,13 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="education_level" class="form-label">Trình độ học vấn</label>
-                                <input type="text" class="form-control" id="education_level" name="education_level" value="{{ member.education_level or '' }}">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="hamlet_name" class="form-label">Ấp (từ tổ hội)</label>
-                                <input type="text" class="form-control" id="hamlet_name" name="hamlet_name" value="{{ member.hamlet_name or '' }}" readonly style="background-color: #e9ecef;">
+                                <select class="form-select" id="education_level" name="education_level">
+                                    <option value="">-- Chọn một --</option>
+                                    <option value="THCS" {% if member.education_level == 'THCS' %}selected{% endif %}>THCS</option>
+                                    <option value="THPT" {% if member.education_level == 'THPT' %}selected{% endif %}>THPT</option>
+                                    <option value="Cạo đẳng" {% if member.education_level == 'Cạo đẳng' %}selected{% endif %}>Cạo đẳng</option>
+                                    <option value="Đại học" {% if member.education_level == 'Đại học' %}selected{% endif %}>Đại học</option>
+                                </select>
                             </div>
                         </div>
                     </div>

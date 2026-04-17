@@ -74,6 +74,7 @@ CREATE TABLE `members` (
 --
 
 INSERT INTO `members` (`id`, `full_name`, `date_of_birth`, `gender`, `id_number`, `phone`, `email`, `address`, `education_level`, `ethnicity`, `religion`, `hamlet_name`, `member_type`, `organization_id`, `status`, `join_date`, `is_verified`, `username`, `password`, `created_at`, `updated_at`, `party_join_date`, `specialty`, `politics`) VALUES
+(4000, 'Lâm Thị Ngọc Trang', '1980-01-01', 'nu', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'thuong', 3, 'active', NULL, 0, NULL, NULL, '2026-03-25 03:30:52', '2026-03-25 03:30:52', NULL, NULL, NULL),
 (4420, 'Lâm Thị Ngọc Trang', '1980-01-01', 'nu', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'thuong', 3, 'active', NULL, 0, NULL, NULL, '2026-03-25 03:30:52', '2026-03-25 03:30:52', NULL, NULL, NULL),
 (4421, 'Hồ Mộng Phi', '1974-01-01', 'nam', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'thuong', 3, 'active', NULL, 0, NULL, NULL, '2026-03-25 03:30:52', '2026-03-25 03:30:52', NULL, NULL, NULL),
 (4422, 'Huỳnh Thị Méo', '1955-01-01', 'nu', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'thuong', 3, 'active', NULL, 0, NULL, NULL, '2026-03-25 03:30:52', '2026-03-25 03:30:52', NULL, NULL, NULL),

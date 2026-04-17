@@ -55,18 +55,18 @@
         </div>
     </div>
 
-    <!-- Thống kê theo ấp -->
+    <!-- Thống kê theo chi hội -->
     <div class="row mb-4">
         <div class="col-md-12">
             <div class="card">
                 <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0">Số lượng hội viên theo ấp</h5>
+                    <h5 class="mb-0">Số lượng hội viên theo chi hội</h5>
                 </div>
                 <div class="card-body">
                     <table class="table table-sm table-hover">
                         <thead>
                             <tr>
-                                <th>Tên ấp</th>
+                                <th>Tên chi hội</th>
                                 <th class="text-end">Số lượng</th>
                             </tr>
                         </thead>
@@ -74,7 +74,7 @@
                             {% if by_xa %}
                                 {% for row in by_xa %}
                                     <tr>
-                                        <td>{{ row.hamlet_name or 'Chưa xác định' }}</td>
+                                        <td>{{ row.name or 'Chưa xác định' }}</td>
                                         <td class="text-end"><span class="badge bg-primary">{{ row.member_count }}</span></td>
                                     </tr>
                                 {% endfor %}

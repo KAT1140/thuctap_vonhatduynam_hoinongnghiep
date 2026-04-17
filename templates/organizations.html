@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Quản lý tổ chức - Hội Nông Dân Việt Nam{% endblock %}
+{% block title %}Quản lý chi hội - Hội Nông Dân Việt Nam{% endblock %}
 
 {% block content %}
 <div class="row mt-4">
     <div class="col-md-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>Quản lý tổ chức</h2>
+            <h2>Quản lý chi hội</h2>
             {% if session.get('role') == 'admin' %}
             <div>
                 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addOrganizationModal">
-                    <i class="fas fa-plus"></i> Thêm tổ chức
+                    <i class="fas fa-plus"></i> Thêm chi hội
                 </button>
             </div>
             {% endif %}
@@ -19,12 +19,18 @@
         <div class="card">
             <div class="card-body">
                 <form method="GET" class="hamlet-toolbar mb-4">
-                    <div class="hamlet-toolbar-title">Quản lý tổ chức</div>
-                    <input type="text" name="q" class="form-control hamlet-toolbar-search" placeholder="Nhập từ khóa tìm kiếm" value="{{ search_term }}">
-                    <input type="hidden" name="xa_id" value="{{ selected_xa_id }}">
-                    <button type="submit" class="btn hamlet-search-btn">
-                        <i class="fas fa-search"></i> Tra cứu
-                    </button>
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; max-width: 500px; margin: 0 auto;">
+                        <input type="text" name="q" class="form-control" placeholder="Nhập từ khóa tìm kiếm" value="{{ search_term }}" style="width: 100%; padding: 15px 20px; font-size: 18px; min-height: 50px;">
+                        <select name="status" class="form-select" style="width: 100%; padding: 15px 20px; font-size: 18px; min-height: 50px;">
+                            <option value="">Tất cả</option>
+                            <option value="active" {% if request.args.get('status') == 'active' %}selected{% endif %}>Hoạt động</option>
+                            <option value="inactive" {% if request.args.get('status') == 'inactive' %}selected{% endif %}>Dừng hoạt động</option>
+                        </select>
+                        <input type="hidden" name="xa_id" value="{{ selected_xa_id }}">
+                        <button type="submit" class="btn hamlet-search-btn" style="width: 100%; min-height: 50px; padding: 15px 30px; font-size: 18px;">
+                            <i class="fas fa-search"></i> Tra cứu
+                        </button>
+                    </div>
                 </form>
 
                 <div class="hamlet-table-container">
@@ -33,8 +39,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>STT</th>
-                                    <th>Tên tổ chức</th>
-                                    <th>Cấp</th>
+                                    <th>Tên chi hội</th>
                                     <th>Thao tác</th>
                                 </tr>
                             </thead>
@@ -43,25 +48,33 @@
                                 <tr>
                                     <td>{{ loop.index }}</td>
                                     <td><strong>{{ row.name }}</strong></td>
-                                    <td>{{ row.level_label }}</td>
                                     <td>
                                         <div class="btn-group" role="group">
+                                            <a href="{{ url_for('organization_detail', org_id=row.id) }}" class="btn btn-sm btn-outline-info" title="Chi tiết">
+                                                <i class="fas fa-info-circle"></i>
+                                            </a>
                                             <a href="{{ url_for('members_list', organization_id=row.id) }}" class="btn btn-sm btn-outline-success" title="Xem hội viên">
                                                 <i class="fas fa-eye"></i>
                                             </a>
                                             <button type="button" class="btn btn-sm btn-outline-primary" data-org-id="{{ row.id }}" onclick="editOrganization({{ row.id }})" title="Sửa">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-outline-danger" data-org-id="{{ row.id }}" data-org-name="{{ row.name }}" onclick="confirmDelete(this)" title="Xóa">
-                                                <i class="fas fa-trash"></i>
+                                            {% if row.status == 'inactive' %}
+                                            <button type="button" class="btn btn-sm btn-outline-success" data-org-id="{{ row.id }}" data-org-name="{{ row.name }}" onclick="confirmReactivateOrganization(this)" title="Hoạt động lại">
+                                                <i class="fas fa-play-circle"></i>
                                             </button>
+                                            {% else %}
+                                            <button type="button" class="btn btn-sm btn-outline-warning" data-org-id="{{ row.id }}" data-org-name="{{ row.name }}" onclick="confirmStopOrganization(this)" title="Dừng hoạt động">
+                                                <i class="fas fa-stop-circle"></i>
+                                            </button>
+                                            {% endif %}
                                         </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
                                 {% if not chi_hoi_rows %}
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted py-4">Không có dữ liệu tổ chức phù hợp</td>
+                                    <td colspan="4" class="text-center text-muted py-4">Không có dữ liệu chi hội phù hợp</td>
                                 </tr>
                                 {% endif %}
                             </tbody>
@@ -74,12 +87,12 @@
     </div>
 </div>
 
-<!-- Modal Sửa tổ chức -->
+<!-- Modal Sửa chi hội -->
 <div class="modal fade" id="editOrganizationModal" tabindex="-1" aria-labelledby="editOrganizationModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="editOrganizationModalLabel">Sửa tổ chức</h5>
+                <h5 class="modal-title" id="editOrganizationModalLabel">Sửa chi hội</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="editOrgForm">
@@ -88,11 +101,11 @@
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="editOrgName" class="form-label">Tên tổ chức <span class="text-danger">*</span></label>
+                            <label for="editOrgName" class="form-label">Tên chi hội <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="editOrgName" name="name" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="editOrgType" class="form-label">Loại tổ chức</label>
+                            <label for="editOrgType" class="form-label">Loại chi hội</label>
                             <input type="text" class="form-control" id="editOrgType" disabled>
                         </div>
                     </div>
@@ -139,7 +152,7 @@
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="addOrganizationModalLabel">Thêm tổ chức mới</h5>
+                <h5 class="modal-title" id="addOrganizationModalLabel">Thêm chi hội mới</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" action="{{ url_for('add_organization') }}">
@@ -149,15 +162,14 @@
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="name" class="form-label">Tên tổ chức <span class="text-danger">*</span></label>
+                            <label for="name" class="form-label">Tên chi hội <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="name" name="name" placeholder="Nhập tối đa 120 ký tự" maxlength="120" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="org_type" class="form-label">Cấp tổ chức <span class="text-danger">*</span></label>
-                            <select class="form-select" id="org_type" name="org_type" required>
-                                <option value="">Chọn cấp tổ chức</option>
+                            <label for="org_type" class="form-label">Cấp chi hội <span class="text-danger">*</span></label>
+                            <select class="form-control" id="org_type" name="org_type" required>
+                                <option value="">Chọn cấp chi hội</option>
                                 <option value="chi_hoi">Chi Hội</option>
-                                <option value="to_hoi">Tổ Hội</option>
                             </select>
                         </div>
                     </div>
@@ -165,7 +177,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> Lưu tổ chức
+                        <i class="fas fa-save"></i> Lưu chi hội
                     </button>
                 </div>
             </form>
@@ -248,14 +260,27 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-function confirmDelete(button) {
+function confirmStopOrganization(button) {
     const orgId = button.getAttribute('data-org-id');
     const orgName = button.getAttribute('data-org-name');
     
-    if (confirm('Bạn có chắc muốn xóa tổ chức "' + orgName + '"?')) {
+    if (confirm('Bạn có chắc muốn dừng hoạt động của chi hội "' + orgName + '"?')) {
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = '/organizations/' + orgId + '/delete';
+        form.action = '/organizations/' + orgId + '/stop';
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function confirmReactivateOrganization(button) {
+    const orgId = button.getAttribute('data-org-id');
+    const orgName = button.getAttribute('data-org-name');
+    
+    if (confirm('Bạn có chắc muốn hoạt động lại chi hội "' + orgName + '"?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/organizations/' + orgId + '/reactivate';
         document.body.appendChild(form);
         form.submit();
     }
@@ -277,7 +302,7 @@ function editOrganization(orgId) {
             document.getElementById('editOrgType').value = 
                 (data.org_type === 'xa' ? 'Hội nông dân xã' : 
                  data.org_type === 'chi_hoi' ? 'Chi hội' : 
-                 data.org_type === 'to_hoi' ? 'Tổ hội' : data.org_type);
+                 data.org_type === 'chi_hoi' ? 'Chi Hội' : data.org_type);
             document.getElementById('editHamletName').value = data.hamlet_name || '';
             document.getElementById('editLeaderName').value = data.leader_name;
             document.getElementById('editPhone').value = data.phone;
@@ -290,7 +315,7 @@ function editOrganization(orgId) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Lỗi tải dữ liệu tổ chức');
+            alert('Lỗi tải dữ liệu chi hội');
         });
 }
 
@@ -326,7 +351,7 @@ document.getElementById('editOrgForm').addEventListener('submit', function(e) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Lỗi cập nhật tổ chức');
+        alert('Lỗi cập nhật chi hội');
     });
 });
 </script>

@@ -68,7 +68,13 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="education_level" class="form-label">Trình độ học vấn</label>
-                                <input type="text" class="form-control" id="education_level" name="education_level">
+                                <select class="form-select" id="education_level" name="education_level">
+                                    <option value="">-- Chọn một --</option>
+                                    <option value="THCS">THCS</option>
+                                    <option value="THPT">THPT</option>
+                                    <option value="Cạo đẳng">Cạo đẳng</option>
+                                    <option value="Đại học">Đại học</option>
+                                </select>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -96,11 +102,6 @@
                                 </select>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="hamlet_name" class="form-label">Ấp (tự động từ tổ hội)</label>
-                        <input type="text" class="form-control" id="hamlet_name" name="hamlet_name" placeholder="Sẽ tự động cập nhật khi chọn tổ hội" readonly style="background-color: #e9ecef;">
                     </div>
 
                     <div class="row">
@@ -163,22 +164,5 @@
 </div>
 
 <script>
-document.getElementById('organization_id').addEventListener('change', async function() {
-    const orgId = this.value;
-    const hamletNameInput = document.getElementById('hamlet_name');
-    
-    if (orgId) {
-        try {
-            const response = await fetch(`/api/organization/${orgId}/hamlet`);
-            const data = await response.json();
-            hamletNameInput.value = data.hamlet_name || '';
-        } catch (error) {
-            console.error('Error fetching hamlet name:', error);
-            hamletNameInput.value = '';
-        }
-    } else {
-        hamletNameInput.value = '';
-    }
-});
 </script>
 {% endblock %}

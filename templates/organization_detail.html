@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Chi tiết tổ hội - Hội Nông Dân Việt Nam{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <a href="{{ url_for('organizations') }}" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Quay lại
+                    </a>
+                    <h2 class="d-inline-block ms-2">{{ organization.name }}</h2>
+                </div>
+            </div>
+
+            <!-- Thông tin tổ hội -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Thông tin tổ hội</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Tên tổ hội:</label>
+                            <p>{{ organization.name }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Loại:</label>
+                            <p>
+                                {% if organization.org_type == 'xa' %}
+                                    <span class="badge bg-danger">Xã</span>
+                                {% elif organization.org_type == 'chi_hoi' %}
+                                    <span class="badge bg-warning">Chi Hội</span>
+                                {% elif organization.org_type == 'chi_hoi' %}
+                                    <span class="badge bg-success">Chi Hội</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Tên ấp:</label>
+                            <p>{{ organization.hamlet_name or '-' }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Địa chỉ:</label>
+                            <p>{{ organization.address or '-' }}</p>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Điện thoại:</label>
+                            <p>{{ organization.phone or '-' }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Email:</label>
+                            <p>{{ organization.email or '-' }}</p>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Trưởng tổ:</label>
+                            <p>{{ organization.leader_name or '-' }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Danh sách tổ hội con (nếu là chi hội) -->
+            {% if organization.org_type == 'chi_hoi' and child_organizations %}
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-sitemap"></i> Danh sách tổ hội
+                        <span class="badge bg-light text-dark ms-2">{{ child_organizations|length }} tổ hội</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%;">STT</th>
+                                    <th style="width: 30%;">Tên tổ hội</th>
+                                    <th style="width: 25%;">Tên ấp</th>
+                                    <th style="width: 20%;">Trưởng tổ</th>
+                                    <th style="width: 20%;">Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for org in child_organizations %}
+                                <tr>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td>
+                                        <strong>{{ org.name }}</strong>
+                                    </td>
+                                    <td>{{ org.hamlet_name or '-' }}</td>
+                                    <td>{{ org.leader_name or '-' }}</td>
+                                    <td class="text-center">
+                                        <a href="{{ url_for('organization_detail', org_id=org.id) }}" class="btn btn-sm btn-primary" title="Chi tiết">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Danh sách hội viên -->
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users"></i> Danh sách hội viên
+                        <span class="badge bg-light text-dark ms-2">{{ members|length }} hội viên</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if members %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%;">STT</th>
+                                    <th style="width: 30%;">Hội viên</th>
+                                    <th style="width: 25%;">Chi hội</th>
+                                    <th style="width: 20%;">Ngày gia nhập</th>
+                                    <th style="width: 20%;">Vai trò</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for member in members %}
+                                <tr>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td>
+                                        <strong>{{ member.full_name }}</strong>
+                                    </td>
+                                    <td>{{ member.organization_name or '-' }}</td>
+                                    <td>
+                                        {% if member.join_date %}
+                                            {{ member.join_date.strftime('%d/%m/%Y') if member.join_date.strftime else member.join_date }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if member.member_type == 'dang_vien' %}
+                                            <span class="badge bg-primary">Đảng viên</span>
+                                        {% elif member.member_type == 'nong_cot' %}
+                                            <span class="badge bg-info">Nòng cốt</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Hội viên thường</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info" role="alert">
+                        <i class="fas fa-info-circle"></i> Tổ hội này chưa có hội viên nào.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card-header {
+        border-radius: 0.25rem 0.25rem 0 0;
+    }
+    
+    table th {
+        font-weight: 600;
+        background-color: #f8f9fa;
+    }
+    
+    .badge {
+        padding: 0.35em 0.65em;
+        font-size: 0.85em;
+    }
+</style>
+{% endblock %}

@@ -12,13 +12,16 @@
                     Quản lý hội viên
                 </h2>
                 <p class="text-muted mb-0" style="font-size: 14px; margin-top: 0.25rem;">
-                    Tổng cộng: <strong>{{ pagination.total_items }}</strong> hội viên
+                    Tổng cộng: <strong>{{ pagination.total }}</strong> hội viên
                 </p>
             </div>
             <div class="d-flex gap-2">
                 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMemberModal">
                     <i class="fas fa-plus"></i> Thêm hội viên
                 </button>
+                <a href="{{ url_for('import_members') }}" class="btn btn-success">
+                    <i class="fas fa-file-excel"></i> Scan Excel
+                </a>
             </div>
         </div>
 
@@ -31,13 +34,30 @@
                             <label for="keyword" class="form-label small mb-1">Từ khóa</label>
                             <input type="text" class="form-control form-control-sm" id="keyword" name="q" value="{{ request.args.get('q', '') }}" placeholder="Nhập từ khóa tìm kiếm">
                         </div>
-                        <div style="flex: 0 0 18%; min-width: 130px;">
-                            <label for="organization_id" class="form-label small mb-1">Hội ấp</label>
-                            <select class="form-select form-select-sm" id="organization_id" name="organization_id">
-                                <option value="">Chọn hội ấp</option>
+                        <div style="flex: 0 0 16%; min-width: 120px;">
+                            <label for="organization_id" class="form-label small mb-1">Chi Hội</label>
+                            <select class="form-select form-select-sm" id="organization_id" name="organization_id" onchange="filterToHoiByChiHoi()">
+                                <option value="">Tất cả</option>
                                 {% for org in member_orgs %}
                                 <option value="{{ org.id }}" {% if request.args.get('organization_id')|int == org.id %}selected{% endif %}>{{ org.display_name }}</option>
                                 {% endfor %}
+                            </select>
+                        </div>
+                        <div style="flex: 0 0 16%; min-width: 120px;">
+                            <label for="to_hoi_id" class="form-label small mb-1">Tổ Hội</label>
+                            <select class="form-select form-select-sm" id="to_hoi_id" name="to_hoi_id">
+                                <option value="">Tất cả</option>
+                                {% for org in to_hoi_orgs %}
+                                <option value="{{ org.id }}" data-parent-id="{{ org.parent_id }}" {% if request.args.get('to_hoi_id')|int == org.id %}selected{% endif %}>{{ org.display_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div style="flex: 0 0 18%; min-width: 130px;">
+                            <label for="gender" class="form-label small mb-1">Giới tính</label>
+                            <select class="form-select form-select-sm" id="gender" name="gender">
+                                <option value="">Tất cả</option>
+                                <option value="nam" {% if request.args.get('gender') == 'nam' %}selected{% endif %}>Nam</option>
+                                <option value="nu" {% if request.args.get('gender') == 'nu' %}selected{% endif %}>Nữ</option>
                             </select>
                         </div>
                         <div style="flex: 0 0 18%; min-width: 130px;">
@@ -86,6 +106,56 @@
                 </form>
 
                 {% if members %}
+                <!-- Pagination Top -->
+                {% if pagination.total_pages > 1 %}
+                <nav aria-label="Page navigation" class="mb-3">
+                    <ul class="pagination justify-content-center">
+                        {% if pagination.page > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=1) }}">
+                                <i class="fas fa-chevron-left"></i> Đầu tiên
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=pagination.page-1) }}">
+                                Trước
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for p in range(max(1, pagination.page-2), min(pagination.total_pages+1, pagination.page+3)) %}
+                            {% if p == pagination.page %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ p }}</span>
+                            </li>
+                            {% else %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=p) }}">
+                                    {{ p }}
+                                </a>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if pagination.page < pagination.total_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=pagination.page+1) }}">
+                                Sau
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=pagination.total_pages) }}">
+                                Cuối cùng <i class="fas fa-chevron-right"></i>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                <p class="text-center text-muted small">
+                    Trang {{ pagination.page }}/{{ pagination.total_pages }} ({{ pagination.total }} hội viên, {{ pagination.per_page }} mỗi trang)
+                </p>
+                {% endif %}
+                
                 <div class="table-responsive">
                     <table class="table table-hover">
                         <thead class="table-light">
@@ -100,7 +170,6 @@
                                 <th>Tôn giáo</th>
                                 <th>Phân loại</th>
                                 <th>Xã / Chi hội / Tổ hội</th>
-                                <th>Ấp</th>
                                 <th>Trạng thái</th>
                                 <th>Thao tác</th>
                             </tr>
@@ -130,9 +199,8 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {{ member.xa_name or '-' }} / {{ member.chi_hoi_name or '-' }} / {{ member.to_hoi_name or '-' }}
+                                    {{ member.xa_name or '-' }} / {{ member.chi_hoi_name or '-' }}
                                 </td>
-                                <td>{{ member.hamlet_display or '-' }}</td>
                                 <td>
                                     {% if member.status == 'active' %}
                                         <span class="badge bg-success">Hoạt động</span>
@@ -164,12 +232,12 @@
                     <ul class="pagination justify-content-center">
                         {% if pagination.page > 1 %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=1) }}">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=1) }}">
                                 <i class="fas fa-chevron-left"></i> Đầu tiên
                             </a>
                         </li>
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=pagination.page-1) }}">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=pagination.page-1) }}">
                                 Trước
                             </a>
                         </li>
@@ -182,7 +250,7 @@
                             </li>
                             {% else %}
                             <li class="page-item">
-                                <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=p) }}">
+                                <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=p) }}">
                                     {{ p }}
                                 </a>
                             </li>
@@ -191,12 +259,12 @@
                         
                         {% if pagination.page < pagination.total_pages %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=pagination.page+1) }}">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=pagination.page+1) }}">
                                 Sau
                             </a>
                         </li>
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, member_type=filters.member_type, hamlet_name=filters.hamlet_name, education_level=filters.education_level, status=filters.status, page=pagination.total_pages) }}">
+                            <a class="page-link" href="{{ url_for('members_list', q=filters.q, organization_id=filters.organization_id, to_hoi_id=filters.to_hoi_id, member_type=filters.member_type, education_level=filters.education_level, status=filters.status, page=pagination.total_pages) }}">
                                 Cuối cùng <i class="fas fa-chevron-right"></i>
                             </a>
                         </li>
@@ -295,10 +363,6 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="hamlet_name" class="form-label">Ấp</label>
-                            <input type="text" class="form-control" id="hamlet_name" name="hamlet_name" placeholder="Ví dụ: Ấp 1">
-                        </div>
                         <div class="col-md-6 mb-3">
                             <label for="organization_id" class="form-label">Tổ hội</label>
                             <select class="form-select" id="organization_id" name="organization_id">
@@ -437,10 +501,6 @@
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="edit_hamlet_name" class="form-label">Ấp</label>
-                            <input type="text" class="form-control bg-light" id="edit_hamlet_name" name="hamlet_name" readonly>
-                        </div>
-                        <div class="col-md-6 mb-3">
                             <label for="edit_member_type" class="form-label">Phân loại</label>
                             <select class="form-select" id="edit_member_type" name="member_type">
                                 <option value="thuong">Hội viên thường</option>
@@ -475,7 +535,54 @@
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function () {
+// Store all tổ hội data when page loads
+let allToHoiData = [];
+
+// Cascading dropdown - filter tổ hội based on selected chi hội
+function filterToHoiByChiHoi() {
+    const chiHoiSelect = document.getElementById('organization_id');
+    const toHoiSelect = document.getElementById('to_hoi_id');
+    const selectedChiHoiId = chiHoiSelect.value;
+    
+    // Build the options based on selection
+    let optionsToShow = [];
+    
+    if (!selectedChiHoiId) {
+        // If "Tất cả" is selected, don't show any tổ hội
+        optionsToShow = [];
+    } else {
+        // Filter by selected chi hội
+        const selectedChiHoiIdNum = parseInt(selectedChiHoiId);
+        optionsToShow = allToHoiData.filter(t => t.parent_id === selectedChiHoiIdNum);
+    }
+    
+    // Rebuild the tổ hội dropdown
+    toHoiSelect.innerHTML = '<option value="">Tất cả</option>';
+    optionsToShow.forEach(toHoi => {
+        const option = document.createElement('option');
+        option.value = toHoi.id;
+        option.textContent = toHoi.name;
+        option.setAttribute('data-parent-id', toHoi.parent_id);
+        toHoiSelect.appendChild(option);
+    });
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const toHoiSelect = document.getElementById('to_hoi_id');
+    
+    // Collect all tổ hội data from current options
+    toHoiSelect.querySelectorAll('option[data-parent-id]').forEach(opt => {
+        allToHoiData.push({
+            id: parseInt(opt.value),
+            name: opt.textContent,
+            parent_id: parseInt(opt.getAttribute('data-parent-id'))
+        });
+    });
+    
+    // Always apply filter on page load (even if chi hội is "Tất cả")
+    filterToHoiByChiHoi();
+    
     const modalElement = document.getElementById('addMemberModal');
     if (modalElement && modalElement.getAttribute('data-open-on-load') === '1') {
         const modal = new bootstrap.Modal(modalElement);
@@ -510,7 +617,6 @@ function editMember(memberId) {
             document.getElementById('edit_party_join_date').value = data.member.party_join_date || '';
             document.getElementById('edit_specialty').value = data.member.specialty || '';
             document.getElementById('edit_politics').value = data.member.politics || '';
-            document.getElementById('edit_hamlet_name').value = data.member.hamlet_name || '';
             document.getElementById('edit_member_type').value = data.member.member_type || 'thuong';
             document.getElementById('edit_status').value = data.member.status || 'active';
         })

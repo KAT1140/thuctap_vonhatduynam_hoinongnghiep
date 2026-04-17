@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Chi tiết tổ chức - Hội Nông Dân Xã Hưng Mỹ{% endblock %}
+{% block title %}Chi tiết chi hội - Hội Nông Dân Xã Hưng Mỹ{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
     <div class="row mb-4">
         <div class="col-md-12">
-            <h2>Chi tiết tổ chức</h2>
-            <p class="text-muted">Danh sách tổ chức với số lượng hội viên</p>
+            <h2>Chi tiết chi hội</h2>
+            <p class="text-muted">Danh sách chi hội với số lượng hội viên</p>
         </div>
     </div>
 
@@ -18,17 +18,16 @@
                 <!-- Row 1: Filters -->
                 <div class="col-12">
                     <div class="row g-2">
-                        <div class="col-md-4">
-                            <input type="text" class="form-control form-control-sm" id="search" name="q" value="{{ filters.q }}" placeholder="Tìm kiếm tổ chức...">
-                        </div>
                         <div class="col-md-3">
+                            <input type="text" class="form-control form-control-sm" id="search" name="q" value="{{ filters.q }}" placeholder="Tìm kiếm chi hội...">
+                        </div>
+                        <div class="col-md-2">
                             <select class="form-select form-select-sm" id="org_type" name="org_type">
                                 <option value="">Tất cả loại</option>
                                 <option value="chi_hoi" {% if filters.org_type == 'chi_hoi' %}selected{% endif %}>Chi hội</option>
-                                <option value="to_hoi" {% if filters.org_type == 'to_hoi' %}selected{% endif %}>Tổ hội</option>
                             </select>
                         </div>
-                        <div class="col-md-5">
+                        <div class="col-md-3">
                             <select class="form-select form-select-sm" id="export_org">
                                 <option value="">Tất cả hội ấp</option>
                                 {% for org in export_organizations %}
@@ -63,10 +62,9 @@
             <table class="table table-hover mb-0">
                 <thead class="table-dark">
                     <tr>
-                        <th>Tên tổ chức</th>
+                        <th>Tên chi hội</th>
                         <th>Loại</th>
                         <th>Cấp trên</th>
-                        <th class="text-center">Số chi nhánh</th>
                         <th class="text-center">Số hội viên</th>
                         <th class="text-center">Hành động</th>
                     </tr>
@@ -86,12 +84,11 @@
                                         <span class="badge bg-primary">Xã</span>
                                     {% elif org.org_type == 'chi_hoi' %}
                                         <span class="badge bg-success">Chi hội</span>
-                                    {% elif org.org_type == 'to_hoi' %}
-                                        <span class="badge bg-info">Tổ hội</span>
+                                    {% elif org.org_type == 'chi_hoi' %}
+                                        <span class="badge bg-success">Chi hội</span>
                                     {% endif %}
                                 </td>
                                 <td>{{ org.parent_name or '-' }}</td>
-                                <td class="text-center"><span class="badge bg-warning text-dark">{{ org.child_count }}</span></td>
                                 <td class="text-center"><span class="badge bg-success">{{ org.member_count }}</span></td>
                                 <td class="text-center">
                                     <div class="btn-group" role="group">
@@ -110,9 +107,9 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
+                            <td colspan="5" class="text-center text-muted py-4">
                                 <i class="fas fa-inbox" style="font-size: 32px;"></i><br>
-                                Không tìm thấy tổ chức nào
+                                Không tìm thấy chi hội nào
                             </td>
                         </tr>
                     {% endif %}
@@ -122,12 +119,12 @@
     </div>
 </div>
 
-<!-- Modal Sửa tổ chức -->
+<!-- Modal Sửa chi hội -->
 <div class="modal fade" id="editOrganizationModal" tabindex="-1" aria-labelledby="editOrganizationModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="editOrganizationModalLabel">Sửa tổ chức</h5>
+                <h5 class="modal-title" id="editOrganizationModalLabel">Sửa chi hội</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="editOrgForm">
@@ -136,11 +133,11 @@
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="editOrgName" class="form-label">Tên tổ chức <span class="text-danger">*</span></label>
+                            <label for="editOrgName" class="form-label">Tên chi hội <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="editOrgName" name="name" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="editOrgType" class="form-label">Loại tổ chức</label>
+                            <label for="editOrgType" class="form-label">Loại chi hội</label>
                             <input type="text" class="form-control" id="editOrgType" disabled>
                         </div>
                     </div>
@@ -203,7 +200,7 @@ function editOrganization(orgId) {
             document.getElementById('editOrgType').value = 
                 (data.org_type === 'xa' ? 'Hội nông dân xã' : 
                  data.org_type === 'chi_hoi' ? 'Chi hội' : 
-                 data.org_type === 'to_hoi' ? 'Tổ hội' : data.org_type);
+                 data.org_type === 'chi_hoi' ? 'Chi Hội' : data.org_type);
             document.getElementById('editHamletName').value = data.hamlet_name || '';
             document.getElementById('editLeaderName').value = data.leader_name;
             document.getElementById('editPhone').value = data.phone;
@@ -216,7 +213,7 @@ function editOrganization(orgId) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Lỗi tải dữ liệu tổ chức');
+            alert('Lỗi tải dữ liệu chi hội');
         });
 }
 
@@ -256,7 +253,7 @@ document.getElementById('editOrgForm').addEventListener('submit', function(e) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Lỗi cập nhật tổ chức');
+        alert('Lỗi cập nhật chi hội');
     });
 });
 

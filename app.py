@@ -20,6 +20,12 @@ if flask_env not in config:
     flask_env = 'development'
 app.config.from_object(config[flask_env])
 
+print(f"DEBUG: Environment={flask_env}")
+print(f"DEBUG: MYSQL_HOST={app.config.get('MYSQL_HOST')}")
+print(f"DEBUG: MYSQL_PORT={app.config.get('MYSQL_PORT')}")
+print(f"DEBUG: MYSQL_USER={app.config.get('MYSQL_USER')}")
+print(f"DEBUG: MYSQL_DB={app.config.get('MYSQL_DB')}")
+
 # Add Jinja2 globals for pagination
 app.jinja_env.globals.update(max=max, min=min, range=range)
 
@@ -40,14 +46,18 @@ def get_db_connection():
     """Tạo kết nối MySQL"""
     try:
         db_host = app.config.get('MYSQL_HOST') or 'localhost'
+        db_port = app.config.get('MYSQL_PORT') or 3306
         db_user = app.config.get('MYSQL_USER') or 'root'
         db_password = app.config.get('MYSQL_PASSWORD')
         if db_password is None:
             db_password = ''
         db_name = app.config.get('MYSQL_DB') or 'hoi_nong_dan'
 
+        print(f"DEBUG: Connecting to {db_host}:{db_port} with user {db_user}")
+
         conn = MySQLdb.connect(
             host=db_host,
+            port=db_port,
             user=db_user,
             passwd=db_password,
             db=db_name,
@@ -117,15 +127,102 @@ def roles_required(*allowed_roles):
 
 def validate_org_parent(org_type, parent):
     """Kiểm tra quan hệ cha-con đúng theo thứ bậc: xã -> chi hội -> tổ hội
-    Cho phép tổ hội có xã làm parent nếu chưa có chi hội"""
+    - xã: không có parent (cấp cao nhất hành chính)
+    - chi hội: xã làm parent
+    - tổ hội: chi hội làm parent"""
     if org_type == 'xa':
         return parent is None
     if org_type == 'chi_hoi':
         return parent is not None and parent['org_type'] == 'xa'
     if org_type == 'to_hoi':
-        # Cho phép to_hoi có chi_hoi hoặc xa làm parent
-        return parent is not None and parent['org_type'] in ('chi_hoi', 'xa')
+        return parent is not None and parent['org_type'] == 'chi_hoi'
     return False
+
+
+# HELPER FUNCTIONS - Quản lý hội viên thuộc nhiều tổ hội
+def get_member_organizations(member_id, conn=None):
+    """Lấy danh sách tất cả tổ chức mà hội viên thuộc về (many-to-many)"""
+    if not conn:
+        conn = get_db_connection()
+        close_conn = True
+    else:
+        close_conn = False
+    
+    orgs = []
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT mo.id, mo.organization_id, mo.join_date, mo.role_in_org,
+                   o.name, o.org_type
+            FROM member_organizations mo
+            LEFT JOIN organizations o ON mo.organization_id = o.id
+            WHERE mo.member_id = %s
+            ORDER BY o.org_type, o.name
+        """, (member_id,))
+        orgs = cursor.fetchall()
+        cursor.close()
+        if close_conn:
+            conn.close()
+    
+    return orgs
+
+
+def add_member_to_organization(member_id, org_id, join_date=None, role=None, conn=None):
+    """Thêm hội viên vào 1 tổ chức (không đơn (many-to-many table)"""
+    if not conn:
+        conn = get_db_connection()
+        close_conn = True
+    else:
+        close_conn = False
+    
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO member_organizations (member_id, organization_id, join_date, role_in_org)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE role_in_org = %s
+            """, (member_id, org_id, join_date, role, role))
+            conn.commit()
+            cursor.close()
+            if close_conn:
+                conn.close()
+            return True
+        except Exception as e:
+            print(f"Error adding member to organization: {e}")
+            if close_conn:
+                conn.close()
+            return False
+    return False
+
+
+def remove_member_from_organization(member_id, org_id, conn=None):
+    """Xóa hội viên khỏi 1 tổ chức (many-to-many table)"""
+    if not conn:
+        conn = get_db_connection()
+        close_conn = True
+    else:
+        close_conn = False
+    
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM member_organizations
+                WHERE member_id = %s AND organization_id = %s
+            """, (member_id, org_id))
+            conn.commit()
+            cursor.close()
+            if close_conn:
+                conn.close()
+            return True
+        except Exception as e:
+            print(f"Error removing member from organization: {e}")
+            if close_conn:
+                conn.close()
+            return False
+    return False
+
 
 # Routes
 @app.route('/')
@@ -210,38 +307,47 @@ def members_list():
     """Danh sách hội viên"""
     conn = get_db_connection()
     members = []
-    hamlet_options = []
     member_orgs = []
     open_add_member = (request.args.get('open_add') or '').strip() == '1'
 
     search = (request.args.get('q') or '').strip()
     member_type = (request.args.get('member_type') or '').strip()
-    hamlet_name = (request.args.get('hamlet_name') or '').strip()
     education_level = (request.args.get('education_level') or '').strip()
     status = (request.args.get('status') or '').strip()
-    organization_id = (request.args.get('organization_id') or '').strip()
+    organization_id = (request.args.get('organization_id') or '').strip()  # Chi Hội
+    to_hoi_id = (request.args.get('to_hoi_id') or '').strip()  # Tổ Hội
+    gender = (request.args.get('gender') or '').strip()
     
-    # Prepare organization filter (handle Xã which should include all child organizations)
+    # Initialize pagination variables
+    page = int(request.args.get('page', 1))
+    per_page = 50
+    total_members = 0
+    total_pages = 0
+    
+    # Prepare organization filter (handle Xã and Chi Hội which should include all child organizations)
     org_filter_ids = []
-    if organization_id:
+    if to_hoi_id:
+        # Direct filter by Tổ Hội
+        try:
+            org_filter_ids = [int(to_hoi_id)]
+        except:
+            pass
+    elif organization_id:
+        # Filter by Chi Hội -> get all to_hoi under it
         try:
             org_id = int(organization_id)
             if conn:
                 cursor = conn.cursor()
-                # Check if this organization is a Xã
                 cursor.execute("SELECT org_type FROM organizations WHERE id = %s", (org_id,))
                 org_result = cursor.fetchone()
                 
-                if org_result and org_result['org_type'] == 'xa':
-                    # Get all chi_hoi and to_hoi under this xa
+                if org_result and org_result['org_type'] == 'chi_hoi':
+                    # Get all to_hoi under this chi_hoi
                     cursor.execute("""
                         SELECT id FROM organizations 
-                        WHERE parent_id = %s AND org_type IN ('chi_hoi', 'to_hoi')
+                        WHERE parent_id = %s AND org_type = 'to_hoi'
                     """, (org_id,))
                     org_filter_ids = [row['id'] for row in cursor.fetchall()]
-                else:
-                    # It's a chi_hoi or to_hoi, use direct filter
-                    org_filter_ids = [org_id]
                 cursor.close()
         except:
             pass
@@ -250,20 +356,23 @@ def members_list():
         cursor = conn.cursor()
         query = """
             SELECT m.*,
-                   t.name as to_hoi_name,
-                   c.name as chi_hoi_name,
+                   t.name as chi_hoi_name,
                    x.name as xa_name,
-                   COALESCE(m.hamlet_name, t.hamlet_name) as hamlet_display
+                   t.hamlet_name as hamlet_display
             FROM members m
             LEFT JOIN organizations t ON m.organization_id = t.id
-            LEFT JOIN organizations c ON t.parent_id = c.id
-            LEFT JOIN organizations x ON c.parent_id = x.id
+            LEFT JOIN organizations x ON t.parent_id = x.id
             WHERE 1 = 1
         """
         params = []
 
-        # Org scoping: to_hoi users can only see members from their organization
+        # Org scoping: to_hoi users can see their chi_hoi or members, chi_hoi users can see their org members
+        # (role='to_hoi' is used for chi_hoi managers)
         if session.get('role') == 'to_hoi' and session.get('organization_id'):
+            query += " AND m.organization_id = %s"
+            params.append(session['organization_id'])
+        elif session.get('role') == 'chi_hoi' and session.get('organization_id'):
+            # chi_hoi can see members from their chi_hoi only
             query += " AND m.organization_id = %s"
             params.append(session['organization_id'])
 
@@ -283,10 +392,6 @@ def members_list():
             query += " AND m.member_type = %s"
             params.append(member_type)
 
-        if hamlet_name:
-            query += " AND COALESCE(m.hamlet_name, t.hamlet_name) LIKE %s"
-            params.append(f"%{hamlet_name}%")
-
         if education_level:
             query += " AND m.education_level = %s"
             params.append(education_level)
@@ -294,6 +399,10 @@ def members_list():
         if status:
             query += " AND m.status = %s"
             params.append(status)
+
+        if gender:
+            query += " AND m.gender = %s"
+            params.append(gender)
         
         if org_filter_ids:
             placeholders = ','.join(['%s'] * len(org_filter_ids))
@@ -303,14 +412,15 @@ def members_list():
         query += " ORDER BY m.full_name ASC"
         
         # Add pagination: 50 members per page
-        page = int(request.args.get('page', 1))
-        per_page = 50
         offset = (page - 1) * per_page
         
         # Get total count for pagination - reuse the same filter logic
         count_params = []
         count_query = f"SELECT COUNT(*) as total FROM members m WHERE 1=1"
         if session.get('role') == 'to_hoi' and session.get('organization_id'):
+            count_query += " AND m.organization_id = %s"
+            count_params.append(session['organization_id'])
+        elif session.get('role') == 'chi_hoi' and session.get('organization_id'):
             count_query += " AND m.organization_id = %s"
             count_params.append(session['organization_id'])
         # Add filters to count query
@@ -321,15 +431,15 @@ def members_list():
         if member_type:
             count_query += " AND m.member_type = %s"
             count_params.append(member_type)
-        if hamlet_name:
-            count_query += " AND m.hamlet_name LIKE %s"
-            count_params.append(f"%{hamlet_name}%")
         if education_level:
             count_query += " AND m.education_level = %s"
             count_params.append(education_level)
         if status:
             count_query += " AND m.status = %s"
             count_params.append(status)
+        if gender:
+            count_query += " AND m.gender = %s"
+            count_params.append(gender)
         if org_filter_ids:
             placeholders = ','.join(['%s'] * len(org_filter_ids))
             count_query += f" AND m.organization_id IN ({placeholders})"
@@ -342,26 +452,25 @@ def members_list():
         query += f" LIMIT {per_page} OFFSET {offset}"
         cursor.execute(query, tuple(params))
         members = cursor.fetchall()
+        
+        # Capitalize all word first letters of hamlet_display (title case)
+        for member in members:
+            if member.get('hamlet_display'):
+                hamlet_name = member['hamlet_display']
+                if hamlet_name:
+                    member['hamlet_display'] = hamlet_name.title()
 
         cursor.execute("""
-            SELECT DISTINCT hamlet_name
-            FROM (
-                SELECT COALESCE(m.hamlet_name, t.hamlet_name) as hamlet_name
-                FROM members m
-                LEFT JOIN organizations t ON m.organization_id = t.id
-            ) hm
-            WHERE hamlet_name IS NOT NULL AND hamlet_name <> ''
-            ORDER BY hamlet_name
+            SELECT id, name as display_name, org_type, parent_id
+            FROM organizations
+            WHERE org_type IN ('chi_hoi', 'to_hoi')
+            ORDER BY org_type DESC, name ASC
         """)
-        hamlet_options = [row['hamlet_name'] for row in cursor.fetchall()]
-
-        cursor.execute("""
-            SELECT t.id, t.name as display_name
-            FROM organizations t
-            WHERE t.org_type = 'to_hoi'
-            ORDER BY t.name
-        """)
-        member_orgs = cursor.fetchall()
+        all_orgs = cursor.fetchall()
+        
+        # Separate into chi_hoi and to_hoi lists
+        member_orgs = [o for o in all_orgs if o['org_type'] == 'chi_hoi']
+        to_hoi_orgs = [o for o in all_orgs if o['org_type'] == 'to_hoi']
 
         cursor.close()
         conn.close()
@@ -369,16 +478,18 @@ def members_list():
     return render_template(
         'members.html',
         members=members,
-        hamlet_options=hamlet_options,
         member_orgs=member_orgs,
+        to_hoi_orgs=to_hoi_orgs,
         open_add_member=open_add_member,
         filters={
             'q': search,
             'member_type': member_type,
-            'hamlet_name': hamlet_name,
             'education_level': education_level,
             'status': status,
-            'organization_id': organization_id
+            'organization_id': organization_id,
+            'to_hoi_id': to_hoi_id,
+            'organization_id': organization_id,
+            'gender': gender
         },
         pagination={
             'page': page,
@@ -390,7 +501,7 @@ def members_list():
 
 @app.route('/members/add', methods=['GET', 'POST'])
 @login_required
-@roles_required('admin', 'to_hoi')
+@roles_required('admin', 'chi_hoi', 'to_hoi')
 def add_member():
     """Thêm hội viên"""
     if request.method == 'POST':
@@ -403,10 +514,20 @@ def add_member():
             selected_org_id = data.get('organization_id') or None
 
             # to_hoi users can only add members to their own organization
+            # chi_hoi users can add members to their organization
             if session.get('role') == 'to_hoi' and session.get('organization_id'):
                 if not selected_org_id or int(selected_org_id) != int(session['organization_id']):
                     cursor.close()
                     conn.close()
+                    flash('Bạn chỉ có thể thêm hội viên vào chi hội của mình', 'danger')
+                    return redirect(url_for('members_list'))
+            elif session.get('role') == 'chi_hoi' and session.get('organization_id'):
+                # Check if org_id is chi_hoi
+                if not selected_org_id or int(selected_org_id) != int(session['organization_id']):
+                    cursor.close()
+                    conn.close()
+                    flash('Bạn chỉ có thể thêm hội viên vào chi hội của mình', 'danger')
+                    return redirect(url_for('members_list'))
                     flash('Bạn chỉ được thêm hội viên vào tổ của mình', 'danger')
                     return redirect(url_for('members_list'))
             
@@ -422,21 +543,13 @@ def add_member():
             # Hash password nếu có
             password_hash = generate_password_hash(data.get('password', '123456'))
             
-            # Get hamlet_name from organization if organization is selected
-            hamlet_name = None
-            if selected_org_id:
-                cursor.execute("SELECT hamlet_name FROM organizations WHERE id = %s", (selected_org_id,))
-                org = cursor.fetchone()
-                if org:
-                    hamlet_name = org['hamlet_name']
-            
             cursor.execute("""
                 INSERT INTO members (
                     full_name, date_of_birth, gender, id_number, phone, email, address,
-                    education_level, ethnicity, religion, hamlet_name, member_type,
+                    education_level, ethnicity, religion, member_type,
                     organization_id, join_date, party_join_date, specialty, politics, password
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data.get('full_name'),
                 data.get('date_of_birth') or None,
@@ -448,7 +561,6 @@ def add_member():
                 data.get('education_level'),
                 data.get('ethnicity'),
                 data.get('religion'),
-                hamlet_name,
                 data.get('member_type') or 'thuong',
                 selected_org_id,
                 data.get('join_date') or None,
@@ -457,6 +569,17 @@ def add_member():
                 data.get('politics'),
                 password_hash
             ))
+            
+            # Get the new member ID
+            member_id = cursor.lastrowid
+            
+            # Add member to their primary organization in many-to-many table
+            if selected_org_id and member_id:
+                cursor.execute("""
+                    INSERT INTO member_organizations (member_id, organization_id, join_date)
+                    VALUES (%s, %s, %s)
+                """, (member_id, selected_org_id, data.get('join_date') or None))
+            
             conn.commit()
             cursor.close()
             conn.close()
@@ -464,46 +587,26 @@ def add_member():
             flash('Thêm hội viên thành công', 'success')
             return redirect(url_for('members_list'))
     
-    # Lấy danh sách tổ chức
+    # Lấy danh sách tổ chức (to_hoi - các tộ/nhóm cơ sở)
     conn = get_db_connection()
     organizations = []
     if conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT t.id,
-                   CONCAT(x.name, ' → ', c.name, ' → ', t.name,
-                          CASE WHEN t.hamlet_name IS NOT NULL AND t.hamlet_name <> ''
-                               THEN CONCAT(' (Ấp ', t.hamlet_name, ')')
-                               ELSE '' END) as display_name
+                   CONCAT(h.name, ' → ', x.name, ' → ', c.name, ' → ', t.name) as display_name
             FROM organizations t
             LEFT JOIN organizations c ON t.parent_id = c.id
             LEFT JOIN organizations x ON c.parent_id = x.id
+            LEFT JOIN organizations h ON x.parent_id = h.id
             WHERE t.org_type = 'to_hoi'
-            ORDER BY x.name, c.name, t.name
+            ORDER BY h.name, x.name, c.name, t.name
         """)
         organizations = cursor.fetchall()
         cursor.close()
         conn.close()
     
     return render_template('add_member.html', organizations=organizations)
-
-@app.route('/api/organization/<int:org_id>/hamlet')
-@login_required
-def api_get_organization_hamlet(org_id):
-    """API endpoint to get hamlet_name for an organization"""
-    conn = get_db_connection()
-    
-    if conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT hamlet_name FROM organizations WHERE id = %s", (org_id,))
-        org = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        if org and org['hamlet_name']:
-            return jsonify({'hamlet_name': org['hamlet_name']})
-    
-    return jsonify({'hamlet_name': ''})
 
 @app.route('/api/members/<int:member_id>')
 @login_required
@@ -580,6 +683,75 @@ def api_get_member(member_id):
     
     return jsonify({'error': 'Database connection failed'}), 500
 
+
+@app.route('/api/members/<int:member_id>/organizations', methods=['GET'])
+@login_required
+def api_member_organizations(member_id):
+    """Lấy danh sách tổ chức mà hội viên thuộc về (many-to-many)"""
+    orgs = get_member_organizations(member_id)
+    
+    return jsonify({
+        'organizations': orgs
+    })
+
+
+@app.route('/api/members/<int:member_id>/organizations/<int:org_id>', methods=['POST', 'DELETE'])
+@login_required
+def api_manage_member_organization(member_id, org_id):
+    """Thêm hoặc xóa hội viên khỏi một tổ chức"""
+    conn = get_db_connection()
+    
+    if not conn:
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    cursor = conn.cursor()
+    
+    # Permission check - chỉ admin hoặc người quản lý tổ chức có thể sửa
+    if session.get('role') != 'admin':
+        cursor.execute("SELECT organization_id FROM users WHERE id = %s", (session['user_id'],))
+        user = cursor.fetchone()
+        if not user or user['organization_id'] not in (org_id, None):
+            # Also check if user's org is parent of target org
+            cursor.execute("""
+                SELECT id FROM organizations 
+                WHERE id = %s AND (
+                    parent_id = %s OR 
+                    parent_id IN (SELECT id FROM organizations WHERE parent_id = %s) OR
+                    parent_id IN (SELECT id FROM organizations WHERE parent_id IN (SELECT id FROM organizations WHERE parent_id = %s))
+                )
+            """, (org_id, user['organization_id'], user['organization_id'], user['organization_id']))
+            
+            if not cursor.fetchone():
+                cursor.close()
+                conn.close()
+                return jsonify({'error': 'Permission denied'}), 403
+    
+    if request.method == 'POST':
+        # Thêm hội viên vào tổ chức
+        join_date = request.json.get('join_date') if request.is_json else None
+        role = request.json.get('role') if request.is_json else None
+        
+        if add_member_to_organization(member_id, org_id, join_date, role, conn):
+            cursor.close()
+            conn.close()
+            return jsonify({'success': True, 'message': 'Đã thêm hội viên vào tổ chức'})
+        else:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Failed to add member to organization'}), 500
+    
+    elif request.method == 'DELETE':
+        # Xóa hội viên khỏi tổ chức
+        if remove_member_from_organization(member_id, org_id, conn):
+            cursor.close()
+            conn.close()
+            return jsonify({'success': True, 'message': 'Đã xóa hội viên khỏi tổ chức'})
+        else:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Failed to remove member from organization'}), 500
+
+
 @app.route('/members/<int:member_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_member(member_id):
@@ -599,7 +771,7 @@ def edit_member(member_id):
             flash('Hộ viên không tồn tại', 'danger')
             return redirect(url_for('members_list'))
         
-        # Check permission - to_hoi users can only edit their own members
+        # Check permission - to_hoi users can only edit their own members, chi_hoi can edit from their org and child to_hoi
         user_role = session.get('role')
         if user_role == 'to_hoi':
             cursor.execute("SELECT organization_id FROM users WHERE id = %s", (session['user_id'],))
@@ -609,17 +781,27 @@ def edit_member(member_id):
                 conn.close()
                 flash('Bạn không có quyền sửa hộ viên này', 'danger')
                 return redirect(url_for('members_list'))
+        elif user_role == 'chi_hoi':
+            cursor.execute("SELECT organization_id FROM users WHERE id = %s", (session['user_id'],))
+            user = cursor.fetchone()
+            if user:
+                # Check if member's org is chi_hoi's org or child to_hoi
+                cursor.execute("""
+                    SELECT id FROM organizations 
+                    WHERE id = %s 
+                    AND (
+                        id = %s 
+                        OR (parent_id = %s AND org_type = 'to_hoi')
+                    )
+                """, (member['organization_id'], user['organization_id'], user['organization_id']))
+                if not cursor.fetchone():
+                    cursor.close()
+                    conn.close()
+                    flash('Bạn không có quyền sửa hộ viên này', 'danger')
+                    return redirect(url_for('members_list'))
         
         if request.method == 'POST':
             data = request.form.to_dict()
-            
-            # Get hamlet_name from organization
-            hamlet_name = member['hamlet_name']  # Keep existing if no org selected
-            if data.get('organization_id'):
-                cursor.execute("SELECT hamlet_name FROM organizations WHERE id = %s", (data.get('organization_id'),))
-                org = cursor.fetchone()
-                if org:
-                    hamlet_name = org['hamlet_name']
             
             cursor.execute("""
                 UPDATE members 
@@ -636,8 +818,7 @@ def edit_member(member_id):
                     status = %s,
                     party_join_date = %s,
                     specialty = %s,
-                    politics = %s,
-                    hamlet_name = %s
+                    politics = %s
                 WHERE id = %s
             """, (
                 data.get('full_name'),
@@ -654,7 +835,6 @@ def edit_member(member_id):
                 data.get('party_join_date'),
                 data.get('specialty'),
                 data.get('politics'),
-                hamlet_name,
                 member_id
             ))
             conn.commit()
@@ -670,7 +850,7 @@ def edit_member(member_id):
                 SELECT t.id, t.name, x.name as xa_name
                 FROM organizations t
                 LEFT JOIN organizations x ON t.parent_id = x.id
-                WHERE t.org_type = 'to_hoi'
+                WHERE t.org_type = 'chi_hoi'
                 ORDER BY x.name, t.name
             """)
         else:
@@ -682,7 +862,7 @@ def edit_member(member_id):
                 SELECT t.id, t.name, x.name as xa_name
                 FROM organizations t
                 LEFT JOIN organizations x ON t.parent_id = x.id
-                WHERE t.org_type = 'to_hoi' AND t.id = %s
+                WHERE t.org_type = 'chi_hoi' AND t.id = %s
                 ORDER BY x.name, t.name
             """, (user['organization_id'],))
         
@@ -705,13 +885,7 @@ def delete_member(member_id):
         cursor.execute("SELECT * FROM members WHERE id = %s", (member_id,))
         member = cursor.fetchone()
         
-        if not member:
-            cursor.close()
-            conn.close()
-            flash('Hộ viên không tồn tại', 'danger')
-            return redirect(url_for('members'))
-        
-        # Check permission - to_hoi users can only delete their own members
+        # Check permission - to_hoi users can only delete their own members, chi_hoi can delete from their org and child to_hoi
         user_role = session.get('role')
         if user_role == 'to_hoi':
             cursor.execute("SELECT organization_id FROM users WHERE id = %s", (session['user_id'],))
@@ -721,6 +895,24 @@ def delete_member(member_id):
                 conn.close()
                 flash('Bạn không có quyền xóa hộ viên này', 'danger')
                 return redirect(url_for('members_list'))
+        elif user_role == 'chi_hoi':
+            cursor.execute("SELECT organization_id FROM users WHERE id = %s", (session['user_id'],))
+            user = cursor.fetchone()
+            if user:
+                # Check if member's org is chi_hoi's org or child to_hoi
+                cursor.execute("""
+                    SELECT id FROM organizations 
+                    WHERE id = %s 
+                    AND (
+                        id = %s 
+                        OR (parent_id = %s AND org_type = 'to_hoi')
+                    )
+                """, (member['organization_id'], user['organization_id'], user['organization_id']))
+                if not cursor.fetchone():
+                    cursor.close()
+                    conn.close()
+                    flash('Bạn không có quyền xóa hộ viên này', 'danger')
+                    return redirect(url_for('members_list'))
         
         # Delete the member
         cursor.execute("DELETE FROM members WHERE id = %s", (member_id,))
@@ -745,6 +937,8 @@ def organizations():
     open_add_org = (request.args.get('open_add') or '').strip() == '1'
     search_term = (request.args.get('q') or '').strip()
     selected_xa_id = (request.args.get('xa_id') or '').strip()
+    status_filter = (request.args.get('status') or '').strip()
+    status_filter = (request.args.get('status') or '').strip()
     xa_tree = []
     chi_hoi_rows = []
     
@@ -765,32 +959,27 @@ def organizations():
                                      END as chi_hoi_name
             FROM organizations o
             LEFT JOIN organizations p ON o.parent_id = p.id
-                        LEFT JOIN organizations gp ON p.parent_id = gp.id
+            LEFT JOIN organizations gp ON p.parent_id = gp.id
             ORDER BY FIELD(o.org_type, 'xa', 'chi_hoi', 'to_hoi'), o.name
         """)
         orgs = cursor.fetchall()
 
+        # Query for to_hoi stats - handles both direct xa→to_hoi and xa→chi_hoi→to_hoi
         cursor.execute("""
-            SELECT x.name as xa_name,
-                   c.name as chi_hoi_name,
-                   hm.hamlet_name,
-                   COUNT(DISTINCT hm.to_hoi_id) as to_hoi_count,
-                   COUNT(hm.member_id) as member_count
-            FROM (
-                SELECT c.id as chi_hoi_id,
-                       t.id as to_hoi_id,
-                       COALESCE(NULLIF(m.hamlet_name, ''), NULLIF(t.hamlet_name, '')) as hamlet_name,
-                       m.id as member_id
-                FROM organizations c
-                LEFT JOIN organizations t ON t.parent_id = c.id AND t.org_type = 'to_hoi'
-                LEFT JOIN members m ON m.organization_id = t.id
-                WHERE c.org_type = 'chi_hoi'
-            ) hm
-            JOIN organizations c ON c.id = hm.chi_hoi_id
-            LEFT JOIN organizations x ON c.parent_id = x.id
-            WHERE hm.hamlet_name IS NOT NULL
-            GROUP BY x.name, c.name, hm.hamlet_name
-            ORDER BY x.name, c.name, hm.hamlet_name
+            SELECT 
+                   COALESCE(x.name, p.name) as xa_name,
+                   COALESCE(c.name, '') as chi_hoi_name,
+                   t.hamlet_name,
+                   COUNT(DISTINCT t.id) as to_hoi_count,
+                   COUNT(DISTINCT m.id) as member_count
+            FROM organizations t
+            LEFT JOIN organizations p ON t.parent_id = p.id
+            LEFT JOIN organizations c ON t.parent_id = c.id AND c.org_type = 'chi_hoi'
+            LEFT JOIN organizations x ON CASE WHEN c.id IS NOT NULL THEN c.parent_id ELSE t.parent_id END = x.id
+            LEFT JOIN members m ON m.organization_id = t.id
+            WHERE t.org_type = 'to_hoi' AND t.hamlet_name IS NOT NULL
+            GROUP BY xa_name, chi_hoi_name, t.hamlet_name
+            ORDER BY xa_name, chi_hoi_name, t.hamlet_name
         """)
         hamlet_stats = cursor.fetchall()
 
@@ -845,25 +1034,50 @@ def organizations():
 
         normalized_search = search_term.lower()
         
-        # Show both chi_hoi and to_hoi directly under xa
-        all_child_orgs = [row for row in orgs if row['org_type'] in ('chi_hoi', 'to_hoi')]
-        for item in sorted(all_child_orgs, key=lambda row: row['name'] or ''):
-            if selected_xa_id and str(item['parent_id']) != selected_xa_id:
+        # Build hierarchy: Display both chi_hoi and to_hoi (if chi_hoi doesn't exist)
+        all_chi_hoi = [row for row in orgs if row['org_type'] == 'chi_hoi']
+        all_to_hoi = [row for row in orgs if row['org_type'] == 'to_hoi']
+        all_xa = [row for row in orgs if row['org_type'] == 'xa']
+        
+        # If there's no chi_hoi but there's to_hoi, show to_hoi directly
+        show_to_hoi_directly = len(all_chi_hoi) == 0 and len(all_to_hoi) > 0
+        
+        # Show chi_hoi (or to_hoi if no chi_hoi exists) under xa
+        for xa in sorted(all_xa, key=lambda row: row['name'] or ''):
+            # Check if xa matches filters
+            if selected_xa_id and str(xa['id']) != selected_xa_id:
                 continue
-            if normalized_search and normalized_search not in (item['name'] or '').lower():
-                continue
-
-            parent_xa = org_by_id.get(item['parent_id'])
-            level_label = 'Chi Hội' if item['org_type'] == 'chi_hoi' else 'Tổ Hội'
-            chi_hoi_rows.append({
-                'id': item['id'],
-                'name': item['name'],
-                'level_label': level_label,
-                'xa_name': parent_xa['name'] if parent_xa else ''
-            })
+            
+            # Get children: chi_hoi first, fall back to to_hoi if no chi_hoi
+            if show_to_hoi_directly:
+                children = [r for r in all_to_hoi if r['parent_id'] == xa['id']]
+                child_level = 'Tổ Hội'
+            else:
+                children = [r for r in all_chi_hoi if r['parent_id'] == xa['id']]
+                child_level = 'Chi Hội'
+            
+            for child in sorted(children, key=lambda row: row['name'] or ''):
+                if normalized_search and normalized_search not in (child['name'] or '').lower():
+                    continue
+                    
+                xa_name = xa['name']
+                # Capitalize all word first letters of xa_name (title case)
+                if xa_name:
+                    xa_name = xa_name.title()
+                chi_hoi_rows.append({
+                    'id': child['id'],
+                    'name': child['name'],
+                    'level_label': child_level,
+                    'xa_name': xa_name,
+                    'status': child.get('status', 'active'),
+                })
 
         cursor.close()
         conn.close()
+        
+        # Apply status filter if specified
+        if status_filter:
+            chi_hoi_rows = [r for r in chi_hoi_rows if r.get('status', 'active') == status_filter]
     
     return render_template(
         'organizations.html',
@@ -874,59 +1088,118 @@ def organizations():
         chi_hoi_rows=chi_hoi_rows,
         search_term=search_term,
         selected_xa_id=selected_xa_id,
+        status_filter=status_filter,
         parents=parents,
         open_add_org=open_add_org
     )
 
+@app.route('/organization/<int:org_id>')
+@login_required
+def organization_detail(org_id):
+    """Chi tiết tổ hội và danh sách hội viên"""
+    conn = get_db_connection()
+    organization = None
+    members = []
+    child_organizations = []
+    
+    if conn:
+        cursor = conn.cursor()
+        
+        # Get organization info
+        cursor.execute("""
+            SELECT o.*, p.name as parent_name 
+            FROM organizations o
+            LEFT JOIN organizations p ON o.parent_id = p.id
+            WHERE o.id = %s
+        """, (org_id,))
+        organization = cursor.fetchone()
+        
+        if organization:
+            # Capitalize all word first letters of hamlet_name (title case)
+            if organization.get('hamlet_name'):
+                hamlet_name = organization['hamlet_name']
+                if hamlet_name:
+                    organization['hamlet_name'] = hamlet_name.title()
+            
+            # Get child organizations (to_hoi for chi_hoi)
+            if organization['org_type'] == 'chi_hoi':
+                cursor.execute("""
+                    SELECT id, name, hamlet_name, address, phone, email, leader_name
+                    FROM organizations
+                    WHERE parent_id = %s AND org_type = 'to_hoi'
+                    ORDER BY name ASC
+                """, (org_id,))
+                child_organizations = cursor.fetchall()
+            
+            # Get members: if chi_hoi, get from child to_hoi; if to_hoi, get direct members
+            if organization['org_type'] == 'chi_hoi':
+                # For chi_hoi, get members from all child to_hoi
+                cursor.execute("""
+                    SELECT m.id, m.full_name, m.join_date, m.member_type,
+                           o.name as organization_name
+                    FROM members m
+                    LEFT JOIN organizations o ON m.organization_id = o.id
+                    WHERE m.organization_id IN (
+                        SELECT id FROM organizations WHERE parent_id = %s AND org_type = 'to_hoi'
+                    )
+                    ORDER BY m.full_name ASC
+                """, (org_id,))
+            else:
+                # For other types (xa, to_hoi), get direct members
+                cursor.execute("""
+                    SELECT m.id, m.full_name, m.join_date, m.member_type,
+                           o.name as organization_name
+                    FROM members m
+                    LEFT JOIN organizations o ON m.organization_id = o.id
+                    WHERE m.organization_id = %s
+                    ORDER BY m.full_name ASC
+                """, (org_id,))
+            
+            members = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+    
+    if not organization:
+        flash('Tổ chức không tồn tại', 'danger')
+        return redirect(url_for('organizations'))
+    
+    return render_template(
+        'organization_detail.html',
+        organization=organization,
+        members=members,
+        child_organizations=child_organizations
+    )
+
 @app.route('/organizations/add', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@roles_required('admin', 'chi_hoi')
 def add_organization():
     """Thêm tổ chức"""
     if request.method == 'POST':
         data = request.form.to_dict()
 
         org_type = data.get('org_type') or 'xa'
-        parent_id = None
+        parent_id = data.get('parent_id') or None
         
         conn = get_db_connection()
         if conn:
             cursor = conn.cursor()
 
-            if org_type != 'xa':
-                if org_type == 'chi_hoi':
-                    # Chi hội: parent = Hưng Mỹ (xa)
-                    cursor.execute("SELECT id FROM organizations WHERE name = %s AND org_type = %s", ('Hưng Mỹ', 'xa'))
-                    hung_my = cursor.fetchone()
-                    if hung_my:
-                        parent_id = hung_my['id']
-                elif org_type == 'to_hoi':
-                    # Tổ hội: parent = first chi_hoi under Hưng Mỹ, nếu không có thì dùng Hưng Mỹ
-                    cursor.execute("""
-                        SELECT o.id FROM organizations o
-                        JOIN organizations p ON o.parent_id = p.id
-                        WHERE o.org_type = 'chi_hoi' AND p.name = %s
-                        LIMIT 1
-                    """, ('Hưng Mỹ',))
-                    chi_hoi = cursor.fetchone()
-                    if chi_hoi:
-                        parent_id = chi_hoi['id']
-                    else:
-                        # Nếu không có chi_hoi, dùng Hưng Mỹ làm parent
-                        cursor.execute("SELECT id FROM organizations WHERE name = %s AND org_type = %s", ('Hưng Mỹ', 'xa'))
-                        hung_my = cursor.fetchone()
-                        if hung_my:
-                            parent_id = hung_my['id']
-
             parent = None
             if parent_id:
-                cursor.execute("SELECT id, org_type FROM organizations WHERE id = %s", (parent_id,))
-                parent = cursor.fetchone()
+                try:
+                    parent_id = int(parent_id)
+                    cursor.execute("SELECT id, org_type FROM organizations WHERE id = %s", (parent_id,))
+                    parent = cursor.fetchone()
+                except:
+                    parent_id = None
 
             if not validate_org_parent(org_type, parent):
                 cursor.close()
                 conn.close()
-                flash('Cấu trúc cấp tổ chức không hợp lệ (xã -> chi hội -> tổ hội)', 'danger')
+                error_msg = 'Cấu trúc cấp tổ chức không hợp lệ (huyện → xã → chi hội → tổ hội)'
+                flash(error_msg, 'danger')
                 return redirect(url_for('organizations'))
 
             cursor.execute("""
@@ -963,7 +1236,7 @@ def update_organization_ajax(org_id):
 
 @app.route('/organizations/<int:org_id>/edit', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@roles_required('admin', 'chi_hoi')
 def edit_organization(org_id):
     """Sửa tổ chức"""
     conn = get_db_connection()
@@ -982,6 +1255,16 @@ def edit_organization(org_id):
                 return jsonify({'error': 'Tổ chức không tồn tại'}), 404
             flash('Tổ chức không tồn tại', 'danger')
             return redirect(url_for('organizations'))
+        
+        # Check permission - chi_hoi/to_hoi users can only edit their own organization
+        if (session.get('role') in ('to_hoi', 'chi_hoi')) and session.get('organization_id'):
+            user_org_id = session['organization_id']
+            # Check if editing their own org
+            if org_id != user_org_id:
+                cursor.close()
+                conn.close()
+                flash('Bạn không có quyền sửa chi hội này', 'danger')
+                return redirect(url_for('organizations'))
         
         if request.method == 'POST':
             data = request.form.to_dict()
@@ -1053,15 +1336,55 @@ def api_get_organization(org_id):
     
     return jsonify({'error': 'Lỗi kết nối'}), 500
 
+@app.route('/api/organizations/<int:chi_hoi_id>/to_hoi_list', methods=['GET'])
+@login_required
+def api_get_to_hoi_by_chi_hoi(chi_hoi_id):
+    """API lấy danh sách tổ hội theo chi hội"""
+    conn = get_db_connection()
+    
+    if conn:
+        cursor = conn.cursor()
+        try:
+            # Get all tổ hội that have this chi_hoi as parent
+            cursor.execute("""
+                SELECT id, name as display_name, org_type
+                FROM organizations
+                WHERE parent_id = %s AND org_type = 'to_hoi'
+                ORDER BY name ASC
+            """, (chi_hoi_id,))
+            to_hoies = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            return jsonify({
+                'to_hoies': [{'id': t['id'], 'name': t['display_name']} for t in to_hoies]
+            })
+        except Exception as e:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': str(e)}), 500
+    
+    return jsonify({'error': 'Lỗi kết nối'}), 500
+
 @app.route('/organizations/<int:org_id>/delete', methods=['POST'])
 @login_required
-@admin_required
+@roles_required('admin', 'chi_hoi')
 def delete_organization(org_id):
     """Xóa tổ chức"""
     conn = get_db_connection()
     
     if conn:
         cursor = conn.cursor()
+        
+        # Check permission - chi_hoi/to_hoi users can only delete their own organization
+        if (session.get('role') in ('to_hoi', 'chi_hoi')) and session.get('organization_id'):
+            user_org_id = session['organization_id']
+            # Check if deleting their own org
+            if org_id != user_org_id:
+                cursor.close()
+                conn.close()
+                flash('Bạn không có quyền xóa chi hội này', 'danger')
+                return redirect(url_for('organizations'))
         
         # Check if organization has members
         cursor.execute("SELECT COUNT(*) as count FROM members WHERE organization_id = %s", (org_id,))
@@ -1090,6 +1413,81 @@ def delete_organization(org_id):
         conn.close()
         
         flash('Xóa tổ chức thành công', 'success')
+    
+    return redirect(url_for('organizations'))
+
+@app.route('/organizations/<int:org_id>/stop', methods=['POST'])
+@login_required
+@roles_required('admin', 'chi_hoi', 'to_hoi')
+def stop_organization(org_id):
+    """Dừng hoạt động tổ chức"""
+    conn = get_db_connection()
+    
+    if conn:
+        cursor = conn.cursor()
+        
+        try:
+            # Check permission - chi_hoi/to_hoi users can only stop their own organization
+            if (session.get('role') in ('to_hoi', 'chi_hoi')) and session.get('organization_id'):
+                user_org_id = session['organization_id']
+                if org_id != user_org_id:
+                    cursor.close()
+                    conn.close()
+                    flash('Bạn không có quyền dừng hoạt động chi hội này', 'danger')
+                    return redirect(url_for('organizations'))
+            
+            # Try to update status column
+            try:
+                cursor.execute("UPDATE organizations SET status = 'inactive' WHERE id = %s", (org_id,))
+                conn.commit()
+            except:
+                # If status column doesn't exist, add it first
+                cursor.execute("ALTER TABLE organizations ADD COLUMN status VARCHAR(50) DEFAULT 'active'")
+                conn.commit()
+                cursor.execute("UPDATE organizations SET status = 'inactive' WHERE id = %s", (org_id,))
+                conn.commit()
+            
+            flash('Đã dừng hoạt động tổ chức', 'success')
+        except Exception as e:
+            print(f"Error stopping organization: {e}")
+            flash(f'Lỗi: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+    
+    return redirect(url_for('organizations'))
+
+@app.route('/organizations/<int:org_id>/reactivate', methods=['POST'])
+@login_required
+@roles_required('admin', 'chi_hoi', 'to_hoi')
+def reactivate_organization(org_id):
+    """Hoạt động lại tổ chức"""
+    conn = get_db_connection()
+    
+    if conn:
+        cursor = conn.cursor()
+        
+        try:
+            # Check permission - chi_hoi/to_hoi users can only reactivate their own organization
+            if (session.get('role') in ('to_hoi', 'chi_hoi')) and session.get('organization_id'):
+                user_org_id = session['organization_id']
+                if org_id != user_org_id:
+                    cursor.close()
+                    conn.close()
+                    flash('Bạn không có quyền hoạt động lại chi hội này', 'danger')
+                    return redirect(url_for('organizations'))
+            
+            # Update status to active
+            cursor.execute("UPDATE organizations SET status = 'active' WHERE id = %s", (org_id,))
+            conn.commit()
+            
+            flash('Đã hoạt động lại tổ chức', 'success')
+        except Exception as e:
+            print(f"Error reactivating organization: {e}")
+            flash(f'Lỗi: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
     
     return redirect(url_for('organizations'))
 
@@ -1127,12 +1525,13 @@ def reports_member_summary():
         summary['nong_cot_members'] = cursor.fetchone()['count']
 
         cursor.execute("""
-            SELECT COALESCE(m.hamlet_name, t.hamlet_name) as hamlet_name, COUNT(m.id) as member_count
+            SELECT chi.id, chi.name, COUNT(m.id) as member_count
             FROM members m
-            LEFT JOIN organizations t ON m.organization_id = t.id
-            WHERE COALESCE(m.hamlet_name, t.hamlet_name) IS NOT NULL
-            GROUP BY COALESCE(m.hamlet_name, t.hamlet_name)
-            ORDER BY member_count DESC, hamlet_name
+            LEFT JOIN organizations to_hoi ON m.organization_id = to_hoi.id
+            LEFT JOIN organizations chi ON to_hoi.parent_id = chi.id
+            WHERE chi.org_type = 'chi_hoi'
+            GROUP BY chi.id, chi.name
+            ORDER BY member_count DESC, chi.name
         """)
         by_xa = cursor.fetchall()
 
@@ -1207,6 +1606,13 @@ def reports_member_detail():
         cursor.execute(query, tuple(params))
         organizations = cursor.fetchall()
         
+        # Capitalize all word first letters of hamlet_name (title case)
+        for org in organizations:
+            if org.get('hamlet_name'):
+                hamlet_name = org['hamlet_name']
+                if hamlet_name:
+                    org['hamlet_name'] = hamlet_name.title()
+        
         # Get all organizations for export dropdown (Chi Hội and Tổ Hội only)
         cursor.execute("""
             SELECT id, name FROM organizations 
@@ -1232,7 +1638,7 @@ def reports_member_detail():
 # Import from Excel
 @app.route('/members/import', methods=['GET', 'POST'])
 @login_required
-@roles_required('admin', 'to_hoi')
+@roles_required('admin', 'chi_hoi', 'to_hoi')
 def import_members():
     """Nhập hội viên từ file Excel"""
     if request.method == 'POST':
@@ -1268,7 +1674,7 @@ def import_members():
             # Skip header row
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 try:
-                    # Map columns: full_name, date_of_birth, gender, id_number, phone, email, address, education_level, ethnicity, religion, hamlet_name, member_type, organization_id
+                    # Map columns: full_name, date_of_birth, gender, id_number, phone, email, address, education_level, ethnicity, religion, member_type, organization_id
                     full_name = row[0]
                     date_of_birth = row[1]
                     gender = row[2] or 'khac'
@@ -1279,31 +1685,27 @@ def import_members():
                     education_level = row[7]
                     ethnicity = row[8]
                     religion = row[9]
-                    # hamlet_name = row[10]  # We'll get this from the organization
-                    member_type = row[11] or 'thuong'
-                    organization_id = row[12]
+                    member_type = row[10] or 'thuong'
+                    organization_id = row[11]
                     
                     if not full_name or not organization_id:
                         error_messages.append(f"Dòng {row_idx}: Tên hội viên và Tổ chức không được để trống")
                         continue
                     
-                    # Check organization exists and is 'to_hoi'
+                    # Check organization exists and is 'chi_hoi'
                     cursor.execute("SELECT id, org_type, hamlet_name FROM organizations WHERE id = %s", (organization_id,))
                     org = cursor.fetchone()
                     if not org:
                         error_messages.append(f"Dòng {row_idx}: Tổ chức không tồn tại")
                         continue
-                    if org['org_type'] != 'to_hoi':
-                        error_messages.append(f"Dòng {row_idx}: Chỉ được gán hội viên vào Tổ hội")
+                    if org['org_type'] != 'chi_hoi':
+                        error_messages.append(f"Dòng {row_idx}: Chỉ được gán hội viên vào Chi hội")
                         continue
                     
-                    # Get hamlet_name from organization
-                    hamlet_name = org['hamlet_name']
-                    
-                    # to_hoi users can only add to their own organization
-                    if session.get('role') == 'to_hoi' and session.get('organization_id'):
+                    # to_hoi/chi_hoi users can only add to their own organization
+                    if session.get('role') in ('to_hoi', 'chi_hoi') and session.get('organization_id'):
                         if int(organization_id) != int(session['organization_id']):
-                            error_messages.append(f"Dòng {row_idx}: Bạn chỉ được nhập hội viên vào tổ của mình")
+                            error_messages.append(f"Dòng {row_idx}: Bạn chỉ được nhập hội viên vào chi hội của mình")
                             continue
                     
                     # Parse date
@@ -1322,13 +1724,13 @@ def import_members():
                     cursor.execute("""
                         INSERT INTO members (
                             full_name, date_of_birth, gender, id_number, phone, email, address,
-                            education_level, ethnicity, religion, hamlet_name, member_type,
+                            education_level, ethnicity, religion, member_type,
                             organization_id, join_date, password, status
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         full_name, parsed_date, gender, id_number, phone, email, address,
-                        education_level, ethnicity, religion, hamlet_name, member_type,
+                        education_level, ethnicity, religion, member_type,
                         organization_id, datetime.now().strftime('%Y-%m-%d'), password_hash, 'active'
                     ))
                     success_count += 1
@@ -1485,13 +1887,13 @@ def import_members_batch():
                             cursor.execute("""
                                 INSERT INTO members (
                                     full_name, date_of_birth, gender, phone, email,
-                                    hamlet_name, member_type, organization_id, join_date, 
+                                    member_type, organization_id, join_date, 
                                     password, status
                                 )
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             """, (
                                 full_name, date_of_birth, gender, None, email,
-                                hamlet_name_from_org, member_type, organization_id, 
+                                member_type, organization_id, 
                                 parsed_join_date or datetime.now().strftime('%Y-%m-%d'), 
                                 password_hash, 'active'
                             ))
@@ -1541,13 +1943,11 @@ def export_members_all():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT m.*,
-                   t.name as to_hoi_name,
-                   c.name as chi_hoi_name,
+                   t.name as chi_hoi_name,
                    x.name as xa_name
             FROM members m
             LEFT JOIN organizations t ON m.organization_id = t.id
-            LEFT JOIN organizations c ON t.parent_id = c.id
-            LEFT JOIN organizations x ON c.parent_id = x.id
+            LEFT JOIN organizations x ON t.parent_id = x.id
             ORDER BY m.full_name ASC
         """)
         members = cursor.fetchall()
@@ -1559,7 +1959,7 @@ def export_members_all():
         
         # Add headers
         headers = ['Họ tên', 'Ngày sinh', 'Giới tính', 'Số CMND/CCCD', 'Điện thoại', 'Email', 
-                   'Dân tộc', 'Tôn giáo', 'Phân loại', 'Xã', 'Chi hội', 'Tổ hội', 
+                   'Dân tộc', 'Tôn giáo', 'Phân loại', 'Xã', 'Chi hội', 
                    'Trình độ', 'Địa chỉ', 'Trạng thái', 'Ngành nghề', 'Chuyên môn', 'Chính trị']
         ws.append(headers)
         
@@ -1577,7 +1977,6 @@ def export_members_all():
                 'Đảng viên' if member.get('member_type') == 'dang_vien' else 'Nòng cốt' if member.get('member_type') == 'nong_cot' else 'Thường',
                 member.get('xa_name', ''),
                 member.get('chi_hoi_name', ''),
-                member.get('to_hoi_name', ''),
                 member.get('education_level', ''),
                 member.get('address', ''),
                 'Hoạt động' if member.get('status') == 'active' else 'Không hoạt động' if member.get('status') == 'inactive' else 'Bị khóa',
@@ -1604,17 +2003,19 @@ def export_members_all():
         stream = io.BytesIO()
         wb.save(stream)
         stream.seek(0)
-        
         cursor.close()
         conn.close()
         
+        # Create a response with the BytesIO object
         return send_file(
-            stream,
+            io.BytesIO(stream.getvalue()),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
             download_name=f'danh_sach_hoi_vien_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         )
     except Exception as e:
+        print(f'Error in export_members_all: {str(e)}')
+        print(f'Traceback: ', exc_info=True)
         flash(f'Lỗi xuất Excel: {str(e)}', 'danger')
         return redirect(url_for('reports_member_summary'))
 
@@ -1642,13 +2043,11 @@ def export_members_by_organization(org_id):
         # Get members
         cursor.execute("""
             SELECT m.*,
-                   t.name as to_hoi_name,
-                   c.name as chi_hoi_name,
+                   t.name as chi_hoi_name,
                    x.name as xa_name
             FROM members m
             LEFT JOIN organizations t ON m.organization_id = t.id
-            LEFT JOIN organizations c ON t.parent_id = c.id
-            LEFT JOIN organizations x ON c.parent_id = x.id
+            LEFT JOIN organizations x ON t.parent_id = x.id
             WHERE m.organization_id = %s
             ORDER BY m.full_name ASC
         """, (org_id,))
@@ -1665,7 +2064,7 @@ def export_members_by_organization(org_id):
         
         # Add headers
         headers = ['Họ tên', 'Ngày sinh', 'Giới tính', 'Số CMND/CCCD', 'Điện thoại', 'Email', 
-                   'Dân tộc', 'Tôn giáo', 'Phân loại', 'Xã', 'Chi hội', 'Tổ hội', 
+                   'Dân tộc', 'Tôn giáo', 'Phân loại', 'Xã', 'Chi hội', 
                    'Trình độ', 'Địa chỉ', 'Trạng thái', 'Ngành nghề', 'Chuyên môn', 'Chính trị']
         ws.append(headers)
         
@@ -1683,7 +2082,6 @@ def export_members_by_organization(org_id):
                 'Đảng viên' if member.get('member_type') == 'dang_vien' else 'Nòng cốt' if member.get('member_type') == 'nong_cot' else 'Thường',
                 member.get('xa_name', ''),
                 member.get('chi_hoi_name', ''),
-                member.get('to_hoi_name', ''),
                 member.get('education_level', ''),
                 member.get('address', ''),
                 'Hoạt động' if member.get('status') == 'active' else 'Không hoạt động' if member.get('status') == 'inactive' else 'Bị khóa',
@@ -1710,17 +2108,19 @@ def export_members_by_organization(org_id):
         stream = io.BytesIO()
         wb.save(stream)
         stream.seek(0)
-        
         cursor.close()
         conn.close()
         
+        # Create a response with the BytesIO object
         return send_file(
-            stream,
+            io.BytesIO(stream.getvalue()),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
             download_name=f'danh_sach_hoi_vien_{org["name"]}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         )
     except Exception as e:
+        print(f'Error in export_members_org: {str(e)}')
+        print(f'Traceback: ', exc_info=True)
         flash(f'Lỗi xuất Excel: {str(e)}', 'danger')
         return redirect(url_for('reports_member_summary'))
 
