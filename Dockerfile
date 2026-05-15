@@ -21,7 +21,7 @@ COPY . .
 RUN mkdir -p uploads
 
 # Expose port
-EXPOSE 5000
+EXPOSE 20128
 
 # Set environment variables
 ENV FLASK_APP=app.py

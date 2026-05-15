@@ -27,13 +27,14 @@ services:
     environment:
       FLASK_ENV: ${FLASK_ENV:-production}
       FLASK_APP: app.py
+      PORT: ${PORT:-20128}
       MYSQL_HOST: db
       MYSQL_USER: ${MYSQL_USER:-hoi_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-userpassword}
       MYSQL_DB: ${MYSQL_DB:-hoi_nong_dan}
       SECRET_KEY: ${SECRET_KEY:-super-secret-key-change-this}
     ports:
-      - "5000:5000"
+      - "20128:20128"
     volumes:
       - ./uploads:/app/uploads
       - .:/app

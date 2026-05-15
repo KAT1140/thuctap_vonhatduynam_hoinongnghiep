@@ -18,10 +18,10 @@
 
         <div class="card">
             <div class="card-body">
-                <form method="GET" class="hamlet-toolbar mb-4">
-                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; max-width: 500px; margin: 0 auto;">
-                        <input type="text" name="q" class="form-control" placeholder="Nhập từ khóa tìm kiếm" value="{{ search_term }}" style="width: 100%; padding: 15px 20px; font-size: 18px; min-height: 50px;">
-                        <select name="status" class="form-select" style="width: 100%; padding: 15px 20px; font-size: 18px; min-height: 50px;">
+                <form method="GET" class="mb-4" style="width: 100%;">
+                    <div style="display: flex; flex-direction: column; gap: 15px; width: 100%;">
+                        <input type="text" name="q" class="form-control" placeholder="Nhập từ khóa tìm kiếm" value="{{ search_term }}" style="width: 100% !important; display: block; padding: 15px 20px; font-size: 18px; min-height: 50px;">
+                        <select name="status" class="form-select" style="width: 100% !important; display: block; padding: 15px 20px; font-size: 18px; min-height: 50px;">
                             <option value="">Tất cả</option>
                             <option value="active" {% if request.args.get('status') == 'active' %}selected{% endif %}>Hoạt động</option>
                             <option value="inactive" {% if request.args.get('status') == 'inactive' %}selected{% endif %}>Dừng hoạt động</option>
@@ -123,6 +123,10 @@
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
+                            <label for="editFoundedDate" class="form-label">Ngày thành lập</label>
+                            <input type="date" class="form-control" id="editFoundedDate" name="founded_date">
+                        </div>
+                        <div class="col-md-6 mb-3">
                             <label for="editPhone" class="form-label">Điện thoại</label>
                             <input type="tel" class="form-control" id="editPhone" name="phone">
                         </div>
@@ -132,10 +136,7 @@
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label for="editAddress" class="form-label">Địa chỉ</label>
-                        <textarea class="form-control" id="editAddress" name="address" rows="3"></textarea>
-                    </div>
+                    <!-- Address removed from edit modal -->
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
@@ -171,6 +172,13 @@
                                 <option value="">Chọn cấp chi hội</option>
                                 <option value="chi_hoi">Chi Hội</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="founded_date" class="form-label">Ngày thành lập</label>
+                            <input type="date" class="form-control" id="founded_date" name="founded_date">
                         </div>
                     </div>
                 </div>
@@ -307,7 +315,11 @@ function editOrganization(orgId) {
             document.getElementById('editLeaderName').value = data.leader_name;
             document.getElementById('editPhone').value = data.phone;
             document.getElementById('editEmail').value = data.email;
-            document.getElementById('editAddress').value = data.address;
+            
+            // Set founded_date if exists
+            if (data.founded_date) {
+                document.getElementById('editFoundedDate').value = data.founded_date;
+            }
             
             // Show modal
             const modal = new bootstrap.Modal(document.getElementById('editOrganizationModal'));

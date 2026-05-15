@@ -215,6 +215,9 @@
                                         <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editMemberModal" onclick="editMember({{ member.id }})" title="Sửa">
                                             <i class="fas fa-edit"></i>
                                         </button>
+                                        <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#transferOrgModal" onclick="prepareTransferOrg({{ member.id }}, '{{ member.full_name }}')" title="Chuyển chi hội">
+                                            <i class="fas fa-exchange-alt"></i>
+                                        </button>
                                         <button type="button" class="btn btn-sm btn-outline-danger" data-member-id="{{ member.id }}" data-member-name="{{ member.full_name }}" onclick="confirmDeleteMember(this)" title="Xóa">
                                             <i class="fas fa-trash"></i>
                                         </button>
@@ -531,6 +534,161 @@
         </div>
     </div>
 </div>
+
+<!-- Transfer Organization Modal -->
+<div class="modal fade" id="transferOrgModal" tabindex="-1" aria-labelledby="transferOrgModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="transferOrgModalLabel">Quản lý hội viên: <span id="transferMemberName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <!-- Nav Tabs -->
+            <ul class="nav nav-tabs" id="memberActionTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="transferTab" data-bs-toggle="tab" data-bs-target="#transferContent" type="button" role="tab">
+                        <i class="fas fa-exchange-alt"></i> Chuyển chi hội
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="editTab" data-bs-toggle="tab" data-bs-target="#editContent" type="button" role="tab">
+                        <i class="fas fa-edit"></i> Chỉnh sửa thông tin
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="memberActionTabsContent">
+                <!-- Transfer Tab -->
+                <div class="tab-pane fade show active" id="transferContent" role="tabpanel" aria-labelledby="transferTab">
+                    <form id="transferOrgForm" method="POST">
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="transferChiHoi" class="form-label">Chi hội <span class="text-danger">*</span></label>
+                                <select class="form-select" id="transferChiHoi" name="chi_hoi_id" required onchange="loadToHoiByChiHoi()">
+                                    <option value="">Chọn chi hội</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="transferToHoi" class="form-label">Tổ hội <span class="text-danger">*</span></label>
+                                <select class="form-select" id="transferToHoi" name="to_hoi_id" required>
+                                    <option value="">Chọn tổ hội</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-exchange-alt"></i> Chuyển
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Edit Tab -->
+                <div class="tab-pane fade" id="editContent" role="tabpanel" aria-labelledby="editTab">
+                    <form id="editMemberForm" method="POST">
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editFullName" class="form-label">Họ tên <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="editFullName" name="full_name" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editDateOfBirth" class="form-label">Ngày sinh</label>
+                                        <input type="date" class="form-control" id="editDateOfBirth" name="date_of_birth">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editGender" class="form-label">Giới tính</label>
+                                        <select class="form-select" id="editGender" name="gender">
+                                            <option value="khac">Khác</option>
+                                            <option value="nam">Nam</option>
+                                            <option value="nu">Nữ</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editIdNumber" class="form-label">Số CMND/CCCD</label>
+                                        <input type="text" class="form-control" id="editIdNumber" name="id_number">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editEmail" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="editEmail" name="email">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editPhone" class="form-label">Điện thoại</label>
+                                        <input type="tel" class="form-control" id="editPhone" name="phone">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editEducationLevel" class="form-label">Trình độ học vấn</label>
+                                        <select class="form-select" id="editEducationLevel" name="education_level">
+                                            <option value="">-- Chọn một --</option>
+                                            <option value="THCS">THCS</option>
+                                            <option value="THPT">THPT</option>
+                                            <option value="Cạo đẳng">Cạo đẳng</option>
+                                            <option value="Đại học">Đại học</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editMemberType" class="form-label">Phân loại</label>
+                                        <select class="form-select" id="editMemberType" name="member_type">
+                                            <option value="thuong">Hội viên thường</option>
+                                            <option value="dang_vien">Đảng viên</option>
+                                            <option value="nong_cot">Nòng cốt</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="editStatus" class="form-label">Trạng thái</label>
+                                        <select class="form-select" id="editStatus" name="status">
+                                            <option value="active">Hoạt động</option>
+                                            <option value="inactive">Không hoạt động</option>
+                                            <option value="blocked">Bị khóa</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Lưu thay đổi
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -687,6 +845,139 @@ document.getElementById('editMemberModal').addEventListener('hidden.bs.modal', f
     if (form) {
         form.reset();
     }
+});
+
+// Transfer organization functions
+let currentTransferMemberId = null;
+
+function prepareTransferOrg(memberId, memberName) {
+    currentTransferMemberId = memberId;
+    document.getElementById('transferMemberName').textContent = memberName;
+    
+    // Load chi hội list
+    fetch('/api/chi-hoi-list')
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('transferChiHoi');
+            select.innerHTML = '<option value="">Chọn chi hội</option>';
+            data.forEach(chi_hoi => {
+                const option = document.createElement('option');
+                option.value = chi_hoi.id;
+                option.textContent = chi_hoi.name;
+                select.appendChild(option);
+            });
+        });
+    
+    // Load member info into edit form
+    fetch(`/api/members/${memberId}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('editFullName').value = data.full_name || '';
+            document.getElementById('editDateOfBirth').value = data.date_of_birth || '';
+            document.getElementById('editGender').value = data.gender || 'khac';
+            document.getElementById('editIdNumber').value = data.id_number || '';
+            document.getElementById('editEmail').value = data.email || '';
+            document.getElementById('editPhone').value = data.phone || '';
+            document.getElementById('editEducationLevel').value = data.education_level || '';
+            document.getElementById('editMemberType').value = data.member_type || 'thuong';
+            document.getElementById('editStatus').value = data.status || 'active';
+        })
+        .catch(error => console.error('Error loading member:', error));
+}
+
+function loadToHoiByChiHoi() {
+    const chiHoiId = document.getElementById('transferChiHoi').value;
+    if (!chiHoiId) {
+        document.getElementById('transferToHoi').innerHTML = '<option value="">Chọn tổ hội</option>';
+        return;
+    }
+    
+    fetch(`/api/organizations/${chiHoiId}/to_hoi_list`)
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('transferToHoi');
+            select.innerHTML = '<option value="">Chọn tổ hội</option>';
+            data.forEach(to_hoi => {
+                const option = document.createElement('option');
+                option.value = to_hoi.id;
+                option.textContent = to_hoi.name;
+                select.appendChild(option);
+            });
+        });
+}
+
+// Handle transfer form submission
+document.getElementById('transferOrgForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const toHoiId = document.getElementById('transferToHoi').value;
+    if (!toHoiId) {
+        alert('Vui lòng chọn tổ hội');
+        return;
+    }
+    
+    fetch(`/api/members/${currentTransferMemberId}/transfer`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ to_hoi_id: parseInt(toHoiId) })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Chuyển tổ hội thành công');
+            bootstrap.Modal.getInstance(document.getElementById('transferOrgModal')).hide();
+            location.reload();
+        } else {
+            alert('Lỗi: ' + (data.message || 'Không thể chuyển tổ hội'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Lỗi: ' + error.message);
+    });
+});
+
+// Handle edit member form submission
+document.getElementById('editMemberForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        full_name: document.getElementById('editFullName').value,
+        date_of_birth: document.getElementById('editDateOfBirth').value,
+        gender: document.getElementById('editGender').value,
+        id_number: document.getElementById('editIdNumber').value,
+        email: document.getElementById('editEmail').value,
+        phone: document.getElementById('editPhone').value,
+        education_level: document.getElementById('editEducationLevel').value,
+        member_type: document.getElementById('editMemberType').value,
+        status: document.getElementById('editStatus').value
+    };
+    
+    fetch(`/api/members/${currentTransferMemberId}/update-info`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Cập nhật thông tin thành công');
+            bootstrap.Modal.getInstance(document.getElementById('transferOrgModal')).hide();
+            location.reload();
+        } else {
+            alert('Lỗi: ' + (data.message || 'Không thể cập nhật thông tin'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Lỗi: ' + error.message);
+    });
 });
 </script>
 {% endblock %}

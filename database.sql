@@ -51,13 +51,11 @@ CREATE TABLE organizations (
     phone VARCHAR(20) COMMENT 'Số điện thoại',
     email VARCHAR(100) COMMENT 'Email',
     leader_name VARCHAR(100) COMMENT 'Tên trưởng tổ/chi hội',
-    status VARCHAR(50) DEFAULT 'active' COMMENT 'Trạng thái: active, inactive',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (parent_id) REFERENCES organizations(id) ON DELETE SET NULL,
     KEY idx_org_type (org_type),
-    KEY idx_parent_id (parent_id),
-    KEY idx_status (status)
+    KEY idx_parent_id (parent_id)
 ) COMMENT='Tổ chức (xã, chi hội, tổ hội)';
 
 

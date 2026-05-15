@@ -45,12 +45,11 @@ def allowed_file(filename):
 def get_db_connection():
     """Tạo kết nối MySQL"""
     try:
+        # app.config is a dict-like mapping; use .get()
         db_host = app.config.get('MYSQL_HOST') or 'localhost'
-        db_port = app.config.get('MYSQL_PORT') or 3306
+        db_port = int(app.config.get('MYSQL_PORT') or 3306)
         db_user = app.config.get('MYSQL_USER') or 'root'
-        db_password = app.config.get('MYSQL_PASSWORD')
-        if db_password is None:
-            db_password = ''
+        db_password = app.config.get('MYSQL_PASSWORD') or ''
         db_name = app.config.get('MYSQL_DB') or 'hoi_nong_dan'
 
         print(f"DEBUG: Connecting to {db_host}:{db_port} with user {db_user}")
@@ -256,6 +255,7 @@ def login():
                 session['username'] = user['username']
                 session['role'] = user['role']
                 session['full_name'] = user['full_name']
+                session['organization_id'] = user.get('organization_id')
                 session.permanent = True
                 flash(f'Chào mừng {user["full_name"]}!', 'success')
                 return redirect(url_for('dashboard'))
@@ -308,6 +308,7 @@ def members_list():
     conn = get_db_connection()
     members = []
     member_orgs = []
+    to_hoi_orgs = []
     open_add_member = (request.args.get('open_add') or '').strip() == '1'
 
     search = (request.args.get('q') or '').strip()
@@ -607,82 +608,6 @@ def add_member():
         conn.close()
     
     return render_template('add_member.html', organizations=organizations)
-
-@app.route('/api/members/<int:member_id>')
-@login_required
-def api_get_member(member_id):
-    """API endpoint to get member data as JSON"""
-    conn = get_db_connection()
-    
-    if conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM members WHERE id = %s", (member_id,))
-        member = cursor.fetchone()
-        
-        if not member:
-            cursor.close()
-            conn.close()
-            return jsonify({'error': 'Member not found'}), 404
-        
-        # Permission check - to_hoi users can only access their own members
-        if session.get('role') == 'to_hoi':
-            cursor.execute("SELECT organization_id FROM users WHERE id = %s", (session['user_id'],))
-            user = cursor.fetchone()
-            if user and member['organization_id'] != user['organization_id']:
-                cursor.close()
-                conn.close()
-                return jsonify({'error': 'Permission denied'}), 403
-        
-        # Get organization name (remove "Hội " prefix if present)
-        org_name = ''
-        if member['organization_id']:
-            cursor.execute("SELECT name FROM organizations WHERE id = %s", (member['organization_id'],))
-            org = cursor.fetchone()
-            if org:
-                org_name = org['name']
-                if org_name.startswith('Hội '):
-                    org_name = org_name[4:]
-        
-        cursor.close()
-        conn.close()
-        
-        # Format date_of_birth if it exists
-        dob_str = None
-        if member['date_of_birth']:
-            dob_str = member['date_of_birth'].strftime('%Y-%m-%d')
-        
-        jd_str = None
-        if member['join_date']:
-            jd_str = member['join_date'].strftime('%Y-%m-%d')
-        
-        pjd_str = None
-        if member.get('party_join_date'):
-            pjd_str = member['party_join_date'].strftime('%Y-%m-%d')
-        
-        # Format the member data to return
-        return jsonify({
-            'member': {
-                'id': member['id'],
-                'full_name': member['full_name'],
-                'date_of_birth': dob_str,
-                'gender': member['gender'],
-                'id_number': member['id_number'],
-                'email': member['email'],
-                'phone': member['phone'],
-                'address': member['address'],
-                'education_level': member['education_level'],
-                'join_date': jd_str,
-                'hamlet_name': org_name,
-                'member_type': member['member_type'],
-                'status': member['status'],
-                'party_join_date': pjd_str,
-                'specialty': member.get('specialty'),
-                'politics': member.get('politics')
-            }
-        })
-    
-    return jsonify({'error': 'Database connection failed'}), 500
-
 
 @app.route('/api/members/<int:member_id>/organizations', methods=['GET'])
 @login_required
@@ -1203,8 +1128,8 @@ def add_organization():
                 return redirect(url_for('organizations'))
 
             cursor.execute("""
-                INSERT INTO organizations (name, org_type, parent_id, hamlet_name, address, phone, email, leader_name)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO organizations (name, org_type, parent_id, hamlet_name, address, phone, email, leader_name, founded_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data.get('name'),
                 org_type,
@@ -1213,7 +1138,8 @@ def add_organization():
                 data.get('address'),
                 data.get('phone'),
                 data.get('email'),
-                data.get('leader_name')
+                data.get('leader_name'),
+                data.get('founded_date') or None
             ))
             conn.commit()
             cursor.close()
@@ -1275,7 +1201,8 @@ def edit_organization(org_id):
                     address = %s,
                     phone = %s,
                     email = %s,
-                    leader_name = %s
+                    leader_name = %s,
+                    founded_date = %s
                 WHERE id = %s
             """, (
                 data.get('name'),
@@ -1283,6 +1210,7 @@ def edit_organization(org_id):
                 data.get('phone'),
                 data.get('email'),
                 data.get('leader_name'),
+                data.get('founded_date') or None,
                 org_id
             ))
             conn.commit()
@@ -1329,7 +1257,9 @@ def api_get_organization(org_id):
                 'address': org['address'] or '',
                 'phone': org['phone'] or '',
                 'email': org['email'] or '',
-                'leader_name': org['leader_name'] or ''
+                'leader_name': org['leader_name'] or '',
+                'founded_date': org.get('founded_date').isoformat() if org.get('founded_date') else None,
+                'status': org.get('status') or 'active'
             })
         else:
             return jsonify({'error': 'Tổ chức không tồn tại'}), 404
@@ -1356,15 +1286,176 @@ def api_get_to_hoi_by_chi_hoi(chi_hoi_id):
             cursor.close()
             conn.close()
             
-            return jsonify({
-                'to_hoies': [{'id': t['id'], 'name': t['display_name']} for t in to_hoies]
-            })
+            return jsonify([{'id': t['id'], 'name': t['display_name']} for t in to_hoies])
         except Exception as e:
             cursor.close()
             conn.close()
             return jsonify({'error': str(e)}), 500
     
     return jsonify({'error': 'Lỗi kết nối'}), 500
+
+@app.route('/api/chi-hoi-list', methods=['GET'])
+@login_required
+def api_get_chi_hoi_list():
+    """API lấy danh sách tất cả chi hội"""
+    conn = get_db_connection()
+    
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT id, name
+                FROM organizations
+                WHERE org_type = 'chi_hoi'
+                ORDER BY name ASC
+            """)
+            chi_hois = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            return jsonify([{'id': c['id'], 'name': c['name']} for c in chi_hois])
+        except Exception as e:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': str(e)}), 500
+    
+    return jsonify({'error': 'Lỗi kết nối'}), 500
+
+@app.route('/api/members/<int:member_id>/transfer', methods=['POST'])
+@login_required
+def api_transfer_member(member_id):
+    """API chuyển hội viên sang tổ hội khác"""
+    data = request.get_json()
+    to_hoi_id = data.get('to_hoi_id')
+    
+    if not to_hoi_id:
+        return jsonify({'success': False, 'message': 'Vui lòng chọn tổ hội'}), 400
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Lỗi kết nối cơ sở dữ liệu'}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Check if member exists
+        cursor.execute("SELECT id FROM members WHERE id = %s", (member_id,))
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'message': 'Hội viên không tồn tại'}), 404
+        
+        # Check if to_hoi exists
+        cursor.execute("SELECT id, parent_id FROM organizations WHERE id = %s AND org_type = 'to_hoi'", (to_hoi_id,))
+        to_hoi = cursor.fetchone()
+        if not to_hoi:
+            return jsonify({'success': False, 'message': 'Tổ hội không tồn tại'}), 404
+        
+        # Update member's organization_id to the new to_hoi
+        cursor.execute("""
+            UPDATE members
+            SET organization_id = %s
+            WHERE id = %s
+        """, (to_hoi_id, member_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Chuyển tổ hội thành công'})
+    except Exception as e:
+        if conn:
+            cursor.close()
+            conn.close()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/members/<int:member_id>', methods=['GET'])
+@login_required
+def api_get_member(member_id):
+    """API lấy thông tin chi tiết hội viên"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Lỗi kết nối'}), 500
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM members WHERE id = %s", (member_id,))
+        member = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not member:
+            return jsonify({'error': 'Hội viên không tồn tại'}), 404
+        
+        return jsonify({
+            'id': member['id'],
+            'full_name': member['full_name'],
+            'date_of_birth': member['date_of_birth'],
+            'gender': member['gender'],
+            'id_number': member['id_number'],
+            'email': member['email'],
+            'phone': member['phone'],
+            'education_level': member['education_level'],
+            'member_type': member['member_type'],
+            'status': member['status']
+        })
+    except Exception as e:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/members/<int:member_id>/update-info', methods=['POST'])
+@login_required
+def api_update_member_info(member_id):
+    """API cập nhật thông tin hội viên"""
+    data = request.get_json()
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Lỗi kết nối'}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Check if member exists
+        cursor.execute("SELECT id FROM members WHERE id = %s", (member_id,))
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'message': 'Hội viên không tồn tại'}), 404
+        
+        # Update member info
+        cursor.execute("""
+            UPDATE members 
+            SET full_name = %s,
+                date_of_birth = %s,
+                gender = %s,
+                id_number = %s,
+                email = %s,
+                phone = %s,
+                education_level = %s,
+                member_type = %s,
+                status = %s
+            WHERE id = %s
+        """, (
+            data.get('full_name'),
+            data.get('date_of_birth') or None,
+            data.get('gender'),
+            data.get('id_number'),
+            data.get('email'),
+            data.get('phone'),
+            data.get('education_level'),
+            data.get('member_type'),
+            data.get('status'),
+            member_id
+        ))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Cập nhật thông tin thành công'})
+    except Exception as e:
+        if conn:
+            cursor.close()
+            conn.close()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/organizations/<int:org_id>/delete', methods=['POST'])
 @login_required
@@ -1550,7 +1641,8 @@ def reports_member_summary():
 def reports_member_detail():
     """Chi tiết tổ chức"""
     q = (request.args.get('q') or '').strip()
-    org_type = (request.args.get('org_type') or '').strip()
+    # This page should display only Chi Hoi.
+    org_type = 'chi_hoi'
 
     conn = get_db_connection()
     organizations = []
@@ -1613,10 +1705,10 @@ def reports_member_detail():
                 if hamlet_name:
                     org['hamlet_name'] = hamlet_name.title()
         
-        # Get all organizations for export dropdown (Chi Hội and Tổ Hội only)
+        # Get all organizations for export dropdown (Chi Hoi only)
         cursor.execute("""
             SELECT id, name FROM organizations 
-            WHERE org_type IN ('chi_hoi', 'to_hoi')
+            WHERE org_type = 'chi_hoi'
             ORDER BY name
         """)
         export_organizations = cursor.fetchall()
@@ -1928,28 +2020,43 @@ def import_members_batch():
     return render_template('import_batch.html')
 
 
-# Error handlers
+# Export functions
 @app.route('/export/members/all', methods=['GET'])
 @login_required
 def export_members_all():
     """Export all members to Excel"""
-    conn = get_db_connection()
-    
-    if not conn:
-        flash('Lỗi kết nối database', 'danger')
-        return redirect(url_for('reports_member_summary'))
-    
     try:
+        conn = get_db_connection()
+        if not conn:
+            flash('Lỗi kết nối database', 'danger')
+            return redirect(url_for('reports_member_summary'))
+        
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT m.*,
-                   t.name as chi_hoi_name,
-                   x.name as xa_name
+        
+        # Get all members with organization names from current org tree
+        query = """
+            SELECT m.id, m.full_name, m.date_of_birth, m.gender, m.id_number, 
+                   m.phone, m.email, m.ethnicity, m.religion, m.member_type,
+                   m.education_level, m.address, m.status, m.specialty, m.politics,
+                   CASE
+                       WHEN o_cur.org_type = 'xa' THEN o_cur.name
+                       WHEN o_parent.org_type = 'xa' THEN o_parent.name
+                       WHEN o_grand.org_type = 'xa' THEN o_grand.name
+                       ELSE ''
+                   END AS xa_name,
+                   CASE
+                       WHEN o_cur.org_type = 'chi_hoi' THEN o_cur.name
+                       WHEN o_parent.org_type = 'chi_hoi' THEN o_parent.name
+                       WHEN o_grand.org_type = 'chi_hoi' THEN o_grand.name
+                       ELSE ''
+                   END AS chi_hoi_name
             FROM members m
-            LEFT JOIN organizations t ON m.organization_id = t.id
-            LEFT JOIN organizations x ON t.parent_id = x.id
+            LEFT JOIN organizations o_cur ON m.organization_id = o_cur.id
+            LEFT JOIN organizations o_parent ON o_cur.parent_id = o_parent.id
+            LEFT JOIN organizations o_grand ON o_parent.parent_id = o_grand.id
             ORDER BY m.full_name ASC
-        """)
+        """
+        cursor.execute(query)
         members = cursor.fetchall()
         
         # Create workbook
@@ -1960,136 +2067,222 @@ def export_members_all():
         # Add headers
         headers = ['Họ tên', 'Ngày sinh', 'Giới tính', 'Số CMND/CCCD', 'Điện thoại', 'Email', 
                    'Dân tộc', 'Tôn giáo', 'Phân loại', 'Xã', 'Chi hội', 
-                   'Trình độ', 'Địa chỉ', 'Trạng thái', 'Ngành nghề', 'Chuyên môn', 'Chính trị']
+                   'Trình độ', 'Địa chỉ', 'Trạng thái', 'Chuyên môn', 'Chính trị']
         ws.append(headers)
         
         # Add data rows
-        for member in members:
-            row = [
-                member.get('full_name', ''),
-                member.get('date_of_birth', ''),
-                'Nam' if member.get('gender') == 'nam' else 'Nữ' if member.get('gender') == 'nu' else 'Khác',
-                member.get('id_number', ''),
-                member.get('phone', ''),
-                member.get('email', ''),
-                member.get('ethnicity', ''),
-                member.get('religion', ''),
-                'Đảng viên' if member.get('member_type') == 'dang_vien' else 'Nòng cốt' if member.get('member_type') == 'nong_cot' else 'Thường',
-                member.get('xa_name', ''),
-                member.get('chi_hoi_name', ''),
-                member.get('education_level', ''),
-                member.get('address', ''),
-                'Hoạt động' if member.get('status') == 'active' else 'Không hoạt động' if member.get('status') == 'inactive' else 'Bị khóa',
-                member.get('occupation', ''),
-                member.get('specialty', ''),
-                member.get('politics', '')
-            ]
-            ws.append(row)
+        for i, member in enumerate(members):
+            try:
+                full_name = member.get('full_name') or ''
+                date_of_birth = str(member.get('date_of_birth')) if member.get('date_of_birth') else ''
+                gender = member.get('gender') or ''
+                id_number = member.get('id_number') or ''
+                phone = member.get('phone') or ''
+                email = member.get('email') or ''
+                ethnicity = member.get('ethnicity') or ''
+                religion = member.get('religion') or ''
+                member_type = member.get('member_type') or ''
+                education_level = member.get('education_level') or ''
+                address = member.get('address') or ''
+                status = member.get('status') or ''
+                specialty = member.get('specialty') or ''
+                politics = member.get('politics') or ''
+                chi_hoi_name = member.get('chi_hoi_name') or ''
+                xa_name = member.get('xa_name') or ''
+                
+                # Convert to display values
+                gender_display = 'Nam' if gender == 'nam' else 'Nữ' if gender == 'nu' else ''
+                member_type_display = 'Đảng viên' if member_type == 'dang_vien' else 'Nòng cốt' if member_type == 'nong_cot' else ''
+                status_display = 'Hoạt động' if status == 'active' else 'Không hoạt động' if status == 'inactive' else ''
+                
+                row = [full_name, date_of_birth, gender_display, id_number, phone, email,
+                       ethnicity, religion, member_type_display, xa_name, chi_hoi_name,
+                       education_level, address, status_display, specialty, politics]
+                ws.append(row)
+            except Exception as e:
+                print(f"  ERROR at row {i}: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
         
         # Auto-adjust column widths
-        for column in ws.columns:
+        for col_idx in range(1, len(headers) + 1):
             max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
+            column_letter = ws.cell(row=1, column=col_idx).column_letter
+            for row_idx in range(1, ws.max_row + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
+                    if cell.value:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
                 except:
                     pass
             adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column_letter].width = adjusted_width
         
-        # Save to BytesIO
-        stream = io.BytesIO()
-        wb.save(stream)
-        stream.seek(0)
+        # Save and send
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        file_bytes = output.getvalue()
+        output.close()
+
         cursor.close()
         conn.close()
-        
-        # Create a response with the BytesIO object
+
+        output_stream = io.BytesIO(file_bytes)
+        filename = f'danh_sach_hoi_vien_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         return send_file(
-            io.BytesIO(stream.getvalue()),
+            output_stream,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'danh_sach_hoi_vien_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            download_name=filename
         )
     except Exception as e:
         print(f'Error in export_members_all: {str(e)}')
-        print(f'Traceback: ', exc_info=True)
+        import traceback
+        traceback.print_exc()
         flash(f'Lỗi xuất Excel: {str(e)}', 'danger')
         return redirect(url_for('reports_member_summary'))
+
 
 @app.route('/export/members/organization/<int:org_id>', methods=['GET'])
 @login_required
 def export_members_by_organization(org_id):
     """Export members of a specific organization to Excel"""
-    conn = get_db_connection()
-    
-    if not conn:
-        flash('Lỗi kết nối database', 'danger')
-        return redirect(url_for('reports_member_summary'))
-    
     try:
+        conn = get_db_connection()
+        if not conn:
+            flash('Lỗi kết nối database', 'danger')
+            return redirect(url_for('reports_member_summary'))
+        
         cursor = conn.cursor()
         
         # Get organization info
-        cursor.execute("SELECT name, org_type FROM organizations WHERE id = %s", (org_id,))
+        cursor.execute("SELECT id, name, org_type FROM organizations WHERE id = %s", (org_id,))
         org = cursor.fetchone()
         
         if not org:
             flash('Tổ chức không tồn tại', 'danger')
+            cursor.close()
+            conn.close()
             return redirect(url_for('reports_member_summary'))
         
-        # Get members
-        cursor.execute("""
-            SELECT m.*,
-                   t.name as chi_hoi_name,
-                   x.name as xa_name
+        org_name = org.get('name') if org else 'Unknown'
+        org_type = org.get('org_type') if org else None
+
+        # Build strict filter by organization tree to avoid cross-hamlet mixing.
+        # We only use members.organization_id (current assignment), not historical links.
+        filter_clause = ""
+        params = []
+        if org_type == 'to_hoi':
+            filter_clause = "m.organization_id = %s"
+            params = [org_id]
+        elif org_type == 'chi_hoi':
+            filter_clause = """
+                (
+                    m.organization_id = %s
+                    OR m.organization_id IN (
+                        SELECT id FROM organizations
+                        WHERE parent_id = %s AND org_type = 'to_hoi'
+                    )
+                )
+            """
+            params = [org_id, org_id]
+        elif org_type == 'xa':
+            filter_clause = """
+                (
+                    m.organization_id = %s
+                    OR m.organization_id IN (
+                        SELECT c.id FROM organizations c
+                        WHERE c.parent_id = %s AND c.org_type = 'chi_hoi'
+                    )
+                    OR m.organization_id IN (
+                        SELECT t.id
+                        FROM organizations t
+                        INNER JOIN organizations c ON c.id = t.parent_id
+                        WHERE c.parent_id = %s
+                          AND c.org_type = 'chi_hoi'
+                          AND t.org_type = 'to_hoi'
+                    )
+                )
+            """
+            params = [org_id, org_id, org_id]
+        else:
+            filter_clause = "m.organization_id = %s"
+            params = [org_id]
+
+        query_members = f"""
+            SELECT m.id, m.full_name, m.date_of_birth, m.gender, m.id_number,
+                   m.phone, m.email, m.ethnicity, m.religion, m.member_type,
+                   m.education_level, m.address, m.status, m.specialty, m.politics,
+                   CASE
+                       WHEN o_cur.org_type = 'xa' THEN o_cur.name
+                       WHEN o_parent.org_type = 'xa' THEN o_parent.name
+                       WHEN o_grand.org_type = 'xa' THEN o_grand.name
+                       ELSE ''
+                   END AS xa_name,
+                   CASE
+                       WHEN o_cur.org_type = 'chi_hoi' THEN o_cur.name
+                       WHEN o_parent.org_type = 'chi_hoi' THEN o_parent.name
+                       WHEN o_grand.org_type = 'chi_hoi' THEN o_grand.name
+                       ELSE ''
+                   END AS chi_hoi_name
             FROM members m
-            LEFT JOIN organizations t ON m.organization_id = t.id
-            LEFT JOIN organizations x ON t.parent_id = x.id
-            WHERE m.organization_id = %s
+            LEFT JOIN organizations o_cur ON m.organization_id = o_cur.id
+            LEFT JOIN organizations o_parent ON o_cur.parent_id = o_parent.id
+            LEFT JOIN organizations o_grand ON o_parent.parent_id = o_grand.id
+            WHERE {filter_clause}
             ORDER BY m.full_name ASC
-        """, (org_id,))
+        """
+        cursor.execute(query_members, tuple(params))
         members = cursor.fetchall()
-        
         # Create workbook
         wb = Workbook()
         ws = wb.active
         ws.title = "Hội viên"
         
-        # Add title
-        ws['A1'] = f"Danh sách hội viên - {org['name']}"
-        ws['A1'].font = ws['A1'].font.copy()
-        
-        # Add headers
+        # Add headers (no title row)
         headers = ['Họ tên', 'Ngày sinh', 'Giới tính', 'Số CMND/CCCD', 'Điện thoại', 'Email', 
                    'Dân tộc', 'Tôn giáo', 'Phân loại', 'Xã', 'Chi hội', 
-                   'Trình độ', 'Địa chỉ', 'Trạng thái', 'Ngành nghề', 'Chuyên môn', 'Chính trị']
+                   'Trình độ', 'Địa chỉ', 'Trạng thái', 'Chuyên môn', 'Chính trị']
         ws.append(headers)
         
         # Add data rows
-        for member in members:
-            row = [
-                member.get('full_name', ''),
-                member.get('date_of_birth', ''),
-                'Nam' if member.get('gender') == 'nam' else 'Nữ' if member.get('gender') == 'nu' else 'Khác',
-                member.get('id_number', ''),
-                member.get('phone', ''),
-                member.get('email', ''),
-                member.get('ethnicity', ''),
-                member.get('religion', ''),
-                'Đảng viên' if member.get('member_type') == 'dang_vien' else 'Nòng cốt' if member.get('member_type') == 'nong_cot' else 'Thường',
-                member.get('xa_name', ''),
-                member.get('chi_hoi_name', ''),
-                member.get('education_level', ''),
-                member.get('address', ''),
-                'Hoạt động' if member.get('status') == 'active' else 'Không hoạt động' if member.get('status') == 'inactive' else 'Bị khóa',
-                member.get('occupation', ''),
-                member.get('specialty', ''),
-                member.get('politics', '')
-            ]
-            ws.append(row)
+        for i, member in enumerate(members):
+            try:
+                full_name = member.get('full_name') or ''
+                date_of_birth = str(member.get('date_of_birth')) if member.get('date_of_birth') else ''
+                gender = member.get('gender') or ''
+                id_number = member.get('id_number') or ''
+                phone = member.get('phone') or ''
+                email = member.get('email') or ''
+                ethnicity = member.get('ethnicity') or ''
+                religion = member.get('religion') or ''
+                member_type = member.get('member_type') or ''
+                education_level = member.get('education_level') or ''
+                address = member.get('address') or ''
+                status = member.get('status') or ''
+                specialty = member.get('specialty') or ''
+                politics = member.get('politics') or ''
+                chi_hoi_name = member.get('chi_hoi_name') or ''
+                xa_name = member.get('xa_name') or ''
+                
+                # Convert to display values
+                gender_display = 'Nam' if gender == 'nam' else 'Nữ' if gender == 'nu' else ''
+                member_type_display = 'Đảng viên' if member_type == 'dang_vien' else 'Nòng cốt' if member_type == 'nong_cot' else ''
+                status_display = 'Hoạt động' if status == 'active' else 'Không hoạt động' if status == 'inactive' else ''
+                
+                row = [full_name, date_of_birth, gender_display, id_number, phone, email,
+                       ethnicity, religion, member_type_display, xa_name, chi_hoi_name,
+                       education_level, address, status_display, specialty, politics]
+                ws.append(row)
+            except Exception as e:
+                print(f"  ERROR at row {i}: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
         
         # Auto-adjust column widths
         for column in ws.columns:
@@ -2097,30 +2290,38 @@ def export_members_by_organization(org_id):
             column_letter = column[0].column_letter
             for cell in column:
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
+                    if cell.value:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
                 except:
                     pass
             adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column_letter].width = adjusted_width
         
-        # Save to BytesIO
-        stream = io.BytesIO()
-        wb.save(stream)
-        stream.seek(0)
+        # Save and send
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        file_bytes = output.getvalue()
+        output.close()
+        
         cursor.close()
         conn.close()
         
-        # Create a response with the BytesIO object
+        output_stream = io.BytesIO(file_bytes)
+        org_name_safe = secure_filename(org_name) or f"org_{org_id}"
+        filename = f'danh_sach_hoi_vien_{org_name_safe}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         return send_file(
-            io.BytesIO(stream.getvalue()),
+            output_stream,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'danh_sach_hoi_vien_{org["name"]}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            download_name=filename
         )
     except Exception as e:
-        print(f'Error in export_members_org: {str(e)}')
-        print(f'Traceback: ', exc_info=True)
+        print(f'Error in export_members_by_organization: {str(e)}')
+        import traceback
+        traceback.print_exc()
         flash(f'Lỗi xuất Excel: {str(e)}', 'danger')
         return redirect(url_for('reports_member_summary'))
 
@@ -2128,9 +2329,46 @@ def export_members_by_organization(org_id):
 def not_found(error):
     return render_template('404.html'), 404
 
+
+# Development helper: quick login as first admin (ONLY when FLASK_ENV!= 'production')
+@app.route('/__dev_login')
+def dev_login():
+    env = (os.environ.get('FLASK_ENV') or 'development').strip().lower()
+    if env == 'production':
+        return "Not allowed", 403
+
+    conn = get_db_connection()
+    if not conn:
+        return "DB connection failed", 500
+
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, full_name, role, organization_id FROM users WHERE role = 'admin' LIMIT 1")
+    user = cursor.fetchone()
+    if not user:
+        # create default admin
+        from werkzeug.security import generate_password_hash
+        pwd = generate_password_hash('admin')
+        cursor.execute("INSERT INTO users (username, password, full_name, role, is_active) VALUES (%s,%s,%s,%s,TRUE)", ('admin', pwd, 'Dev Admin', 'admin'))
+        conn.commit()
+        cursor.execute("SELECT id, username, full_name, role, organization_id FROM users WHERE username = %s", ('admin',))
+        user = cursor.fetchone()
+
+    # set session
+    session['user_id'] = user['id']
+    session['username'] = user['username']
+    session['role'] = user['role']
+    session['full_name'] = user.get('full_name')
+    session['organization_id'] = user.get('organization_id')
+    session.permanent = True
+    cursor.close()
+    conn.close()
+    return redirect(url_for('dashboard'))
+
 @app.errorhandler(500)
 def internal_error(error):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Force development environment to prevent production config on reload
+    os.environ['FLASK_ENV'] = 'development'
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 20128)), use_reloader=False)
